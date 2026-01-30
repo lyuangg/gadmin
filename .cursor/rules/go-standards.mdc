@@ -1,0 +1,142 @@
+---
+description: gadmin 项目 Go 代码规范与单测要求
+globs: **/*.go
+alwaysApply: false
+---
+
+# gadmin Go 代码规范
+
+本规则适用于本项目内所有 `.go` 文件，约束分层、命名、错误处理、响应方式与单元测试。
+
+## 分层与职责
+
+- **controllers**：只做参数绑定、校验、调用 service、通过 `app.Responder.Success` / `RespondError` 返回。不写业务逻辑，不直接操作 DB。
+- **services**：承载业务逻辑，接收 `ServiceContext`，返回数据与 `error`。可调用 models、utils，**只**用 `errors` 包造错（如 `errors.NotFoundMsg`），不依赖 `response`，不直接使用 `*gin.Context`。
+- **models**：仅定义 GORM 模型与表结构，不含业务方法。
+- **middleware**：鉴权、日志、权限等横切逻辑，使用 `RespondError` 等统一响应。
+- **errors**：业务错误类型与构造（`BizError`、`errors.NotFoundMsg`、`errors.BadRequestErr` 等），无 HTTP 依赖，供 services 与 controllers 使用。
+- **response**：HTTP 响应（`Success`、`RespondError`、`Response` 等），依赖 gin，只被 controllers / middleware 使用。
+- **utils**：通用工具（如 jwt），可被各层按需使用。
+- **routes**：路由注册（`RegisterRouteWithPermission`）与权限映射（`routemeta`）；扫描、导入权限等与 Gin 和 DB 强耦合的逻辑放在 `routes` 包。
+- **app**：应用入口与依赖组装（`NewApp`、`testapp.go` 的测试用构造），持有 DB、Logger、Responder、各 Service 等；仅在此包内设置 `App` 的未导出字段。
+
+## 命名与结构
+
+### 控制器
+
+- 结构体：`XxxController`，持有一个 `app *app.App`，通过 `NewXxxController(a *app.App)` 构造。
+- 查询/筛选参数：小写前缀 + Query，如 `getPermissionsQuery`，用 `form` 绑定。
+- 请求体：导出类型 + Request，如 `CreatePermissionRequest`，用 `json` + `binding`。
+
+### 服务
+
+- 结构体：`XxxService`，持有 `ctx ServiceContext`，通过 `NewXxxService(ctx ServiceContext)` 构造。
+- 业务方法返回 `(result, error)` 或 `(result, total, error)`，错误信息应对用户友好（可对外展示）。
+
+### 模型
+
+- 使用 `gorm` 与 `json` tag，敏感字段用 `json:"-"`。
+- 关联表名等用 `gorm:` 显式指定时，在注释中说明用途（如表前缀生效）。
+
+## 错误与响应
+
+- 控制器内：一律用 `app.Responder.Success(c, data)`、`app.Responder.RespondError(c, err)` 返回；造错用 `errors` 包（如 `errors.BadRequestErr(err)`、`errors.NotFoundMsg("用户不存在")`），不直接写错误码常量。
+- 禁止裸 `_` 忽略 error；service 返回的 error 必须在 controller 中处理并统一 `RespondError(c, err)`。
+- Service 层用 `errors` 包造错（`errors.NotFoundMsg`、`errors.InternalErrorMsg` 等），不依赖 `response`。
+- 对外提示语简洁、可读，避免暴露内部实现（如堆栈、DB 细节）。
+
+## 注释
+
+- 导出的类型、方法、常量须有简要中文注释；复杂逻辑或非显而易见的分支，补充说明意图或约束。
+- 避免与代码重复的无用注释（如「获取用户」写在 `GetUser` 上方）。
+
+## 导入顺序
+
+按以下顺序分组，组间空行：
+
+1. 标准库
+2. 项目包（`github.com/lyuangg/gadmin/...`）
+3. 第三方包（如 `github.com/gin-gonic/gin`）
+
+## 可测试性
+
+- **接口优先**：对外依赖尽量用接口（如 `logger.ILogger`、`response.IResponder`、`services.IUserService`），便于单测注入 mock。
+- **避免在中间件/控制器内直接写 DB**：能由 service 提供的能力（如「按 ID 查用户」）放在 service 接口中，中间件调用 `a.GetUserService().GetUserForAuth(...)` 等，单测时注入 `FakeUserService`。
+- **app 包**：测试用构造（`NewTestApp`、`NewTestAppWithServiceMocks`、`NewTestAppWithLogger`）保留在 `app/testapp.go`，因需设置 `App` 的未导出字段，不能挪到 `internal/testutil`。
+
+---
+
+## 单测要求
+
+### 基本约定
+
+- **测试文件**：`*_test.go` 与被测代码同包（如 `package errors`），测试函数命名为 `TestXxx` 或 `TestXxx_yyy`（子场景）。
+- **不连真实库**：单测中的 DB 使用 `internal/testutil` 或各包内提供的测试用 DB（如内存 SQLite + 迁移），禁止依赖本地 MySQL 等外部数据库。
+- **可重复、独立**：单测不依赖执行顺序；若依赖包级全局状态（如 `routemeta` 的映射表），在 `_test.go` 中提供同包内的 reset 函数（如 `resetRoutePermissionMapForTest()`），每个用例或 `TestMain` 中按需清空，避免用例间污染。
+
+### 覆盖范围
+
+- **services**：核心业务逻辑须有单测，覆盖正常路径与常见错误路径（如「用户不存在」「用户名已存在」「密码错误」）。列表类接口可测分页、筛选、排序；写操作须测成功与至少一种失败分支。
+- **controllers**：关键接口建议有 HTTP 级单测（绑定参数 → 调 service → 断言状态码与 JSON 体）；可结合 mock service 验证 400/401/404/500 与响应结构。
+- **middleware**：鉴权、权限、日志、recovery 等须有单测，覆盖「无 token」「token 无效」「无权限」「panic 恢复」等场景。
+- **errors / response / utils**：导出 API 建议有单测，保证错误码、响应格式、工具函数行为符合预期。
+
+### 测试写法
+
+- **表驱动**：多组输入/期望时使用表驱动，`t.Run(tt.name, func(t *testing.T) { ... })`，便于维护与定位失败用例。
+- **HTTP 测试**：控制器/中间件单测使用 `gin.SetMode(gin.TestMode)`、`httptest.NewRequest`、`httptest.NewRecorder`，断言 `rec.Code` 与 `json.NewDecoder(rec.Body).Decode(&body)` 后的字段。
+- **JWT**：需要合法 token 时先 `utils.InitJWT(&config.Config{JWTSecret: "test-secret"})`，再用 `utils.GenerateToken(...)` 生成，不依赖真实密钥或外部服务。
+
+### Mock 与 Fake
+
+- **Fake 服务**：`services.FakeXxxService` 实现对应 `IXxxService`，通过字段配置返回值（如 `GetUserForAuthUser`、`GetUserForAuthErr`），单测中注入到 `app` 的 Service 槽位或 `app.NewTestAppWithServiceMocks`。
+- **测试 App**：
+  - 仅需 mock service：`app.NewTestAppWithServiceMocks(&app.ServiceMocks{ UserService: &services.FakeUserService{...} })`
+  - 需断言日志：`app.NewTestAppWithLogger(mockLogger)`，mock 实现 `logger.ILogger` 并记录 `InfoContext`/`ErrorContext` 调用
+  - 需真实 DB 的集成式单测：`app.NewTestApp(testutil.NewTestDB(t))`（仍为测试用 DB，非生产库）
+
+### 断言与失败信息
+
+- 使用 `if got != want { t.Errorf("...") }` 或 `t.Fatalf` 及时失败；错误信息中尽量包含 **got / want**，便于排查。
+- 涉及 JSON 时，可解码到结构体再逐字段比较，或对 `code`、`msg`、关键 `data` 做断言。
+
+### 新增代码时的单测
+
+- 新增或修改 **service** 方法：同步补充或更新 `services/*_test.go`，至少覆盖主路径与一种错误路径。
+- 新增或修改 **controller** 接口：视重要性补充 `controllers/*_test.go` 的 HTTP 测试或与现有用例风格一致的测试。
+- 新增或修改 **middleware**：须有对应 `middleware/*_test.go` 用例，覆盖「通过」与「拒绝」场景。
+- 修改 **errors** / **response** / **utils** 的对外行为时：更新或补充相应 `_test.go`，避免回归。
+
+---
+
+## 示例（控制器 → 服务）
+
+```go
+// 控制器：绑定参数 → 调 service → 统一响应
+func (ctrl *PermissionController) GetPermissions(c *gin.Context) {
+	var req getPermissionsQuery
+	if err := c.ShouldBindQuery(&req); err != nil {
+		ctrl.app.Responder.RespondError(c, errors.BadRequestErr(err))
+		return
+	}
+	page, pageSize := req.Page, req.PageSize
+	if page < 1 { page = 1 }
+	if pageSize < 1 { pageSize = 10 }
+	filters := map[string]string{ ... }
+	permissions, total, err := ctrl.app.GetPermissionService().GetPermissions(c, page, pageSize, filters)
+	if err != nil {
+		ctrl.app.Responder.RespondError(c, err)
+		return
+	}
+	ctrl.app.Responder.Success(c, gin.H{"data": permissions, "pagination": ...})
+}
+```
+
+```go
+// 服务：只做业务与数据访问，用 errors 包造错，返回 error
+func (s *PermissionService) GetPermissions(ctx context.Context, page, pageSize int, filters map[string]string) ([]models.Permission, int64, error) {
+	// 查询、统计、返回
+}
+```
+
+新增或修改接口时，请保持上述分层、响应方式与单测要求一致。

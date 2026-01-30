@@ -1,0 +1,423 @@
+[[define "content"]]
+<el-card shadow="never">
+    <template #header>
+        <div class="card-header">
+            <span class="card-title">权限管理</span>
+            <div>
+                <el-button v-if="canDeletePermission && selectedPermissions.length > 0" type="danger" @click="handleBatchDelete" style="margin-right: 10px;">
+                    <el-icon><Delete /></el-icon>
+                    <span>批量删除 ({{ selectedPermissions.length }})</span>
+                </el-button>
+                <el-button v-if="canAddPermission" type="primary" @click="handleAdd">
+                    <el-icon><Plus /></el-icon>
+                    <span>添加权限</span>
+                </el-button>
+            </div>
+        </div>
+    </template>
+    
+    <el-form :inline="true" :model="filters">
+        <el-form-item label="路径">
+            <el-input v-model="filters.path" placeholder="请输入路径" clearable @keyup.enter="handleFilter"></el-input>
+        </el-form-item>
+        <el-form-item label="请求方法">
+            <el-select v-model="filters.method" placeholder="全部" clearable>
+                <el-option label="全部" value=""></el-option>
+                <el-option label="GET" value="GET"></el-option>
+                <el-option label="POST" value="POST"></el-option>
+                <el-option label="PUT" value="PUT"></el-option>
+                <el-option label="DELETE" value="DELETE"></el-option>
+                <el-option label="PATCH" value="PATCH"></el-option>
+            </el-select>
+        </el-form-item>
+        <el-form-item label="名称">
+            <el-input v-model="filters.name" placeholder="请输入名称" clearable @keyup.enter="handleFilter"></el-input>
+        </el-form-item>
+        <el-form-item label="分组">
+            <el-select v-model="filters.group" placeholder="全部" clearable style="width: 150px;">
+                <el-option label="全部" value=""></el-option>
+                <el-option v-for="group in groupOptions" :key="group" :label="group || '未分组'" :value="group"></el-option>
+            </el-select>
+        </el-form-item>
+        <el-form-item>
+            <el-button type="primary" @click="handleFilter" :loading="tableLoading">筛选</el-button>
+            <el-button @click="handleResetFilter" :disabled="tableLoading">重置</el-button>
+        </el-form-item>
+    </el-form>
+    
+    <el-table :data="permissions" border stripe :loading="tableLoading" @sort-change="handleSortChange" @selection-change="handleSelectionChange">
+        <el-table-column type="selection" width="55"></el-table-column>
+        <el-table-column prop="id" label="ID" width="80" sortable="custom"></el-table-column>
+        <el-table-column prop="path" label="路径"></el-table-column>
+        <el-table-column label="方法" width="100">
+            <template #default="{ row }">
+                <el-tag :type="getMethodTagType(row.method)" size="small">{{ row.method }}</el-tag>
+            </template>
+        </el-table-column>
+        <el-table-column prop="name" label="名称">
+            <template #default="{ row }">
+                {{ row.name || '-' }}
+            </template>
+        </el-table-column>
+        <el-table-column prop="group" label="分组" width="120">
+            <template #default="{ row }">
+                {{ row.group || '-' }}
+            </template>
+        </el-table-column>
+        <el-table-column prop="description" label="描述">
+            <template #default="{ row }">
+                {{ row.description || '-' }}
+            </template>
+        </el-table-column>
+        <el-table-column label="自动导入" width="100">
+            <template #default="{ row }">
+                <el-tag :type="row.auto_import ? 'success' : 'info'" size="small">{{ row.auto_import ? '是' : '否' }}</el-tag>
+            </template>
+        </el-table-column>
+        <el-table-column label="操作" width="150" fixed="right">
+            <template #default="{ row }">
+                <el-button v-if="canEditPermission" size="small" @click="handleEdit(row)">编辑</el-button>
+                <el-button v-if="canDeletePermission" size="small" type="danger" @click="handleDelete(row)">删除</el-button>
+            </template>
+        </el-table-column>
+    </el-table>
+    
+    [[template "components/pagination" .]]
+</el-card>
+
+<el-dialog v-model="dialogVisible" :title="dialogTitle" width="500px" @close="dialogVisible = false">
+    <el-form :model="form" label-width="80px">
+        <el-form-item label="路径">
+            <el-input v-model="form.path" :disabled="isEdit" placeholder="请输入路径"></el-input>
+        </el-form-item>
+        <el-form-item label="方法">
+            <el-select v-model="form.method" :disabled="isEdit" placeholder="请选择方法">
+                <el-option label="GET" value="GET"></el-option>
+                <el-option label="POST" value="POST"></el-option>
+                <el-option label="PUT" value="PUT"></el-option>
+                <el-option label="DELETE" value="DELETE"></el-option>
+                <el-option label="PATCH" value="PATCH"></el-option>
+            </el-select>
+        </el-form-item>
+        <el-form-item label="名称">
+            <el-input v-model="form.name" placeholder="请输入名称"></el-input>
+        </el-form-item>
+        <el-form-item label="分组">
+            <el-input v-model="form.group" placeholder="请输入分组"></el-input>
+        </el-form-item>
+        <el-form-item label="描述">
+            <el-input v-model="form.description" type="textarea" :rows="3" placeholder="请输入描述"></el-input>
+        </el-form-item>
+    </el-form>
+    <template #footer>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSubmit">确定</el-button>
+    </template>
+</el-dialog>
+[[end]]
+
+[[define "scripts"]]
+<script>
+(function() {
+// 页面特定的配置（只需要定义当前页面需要的数据和方法）
+// 布局模板会自动合并此配置并挂载应用
+window.pageAppConfig = {
+    data() {
+        return {
+            // 页面特定的数据（会自动与基础配置合并）
+            // 用户信息从 localStorage 获取，不再从模板传递
+            permissions: [],
+            tableLoading: false,
+            selectedPermissions: [], // 选中的权限
+            allPermissions: [], // 所有权限数据（用于提取分组）
+            dialogVisible: false,
+            isEdit: false,
+            form: {
+                id: null,
+                path: '',
+                method: '',
+                name: '',
+                group: '',
+                description: ''
+            },
+            pagination: {
+                page: 1,
+                page_size: 10,
+                total: 0,
+                total_page: 0
+            },
+            dialogTitle: '添加权限',
+            filters: {
+                path: '',
+                method: '',
+                name: '',
+                group: ''
+            },
+            orderBy: 'id_desc'  // 默认按 id 倒序
+        };
+    },
+    computed: {
+        // 按钮权限控制
+        canAddPermission: function() {
+            if (!window.PermissionManager || !window.PermissionManager.initialized) {
+                return false;
+            }
+            return window.PermissionManager.isButtonVisible('/admin/permissions', 'add');
+        },
+        canEditPermission: function() {
+            if (!window.PermissionManager || !window.PermissionManager.initialized) {
+                return false;
+            }
+            return window.PermissionManager.isButtonVisible('/admin/permissions', 'edit');
+        },
+        canDeletePermission: function() {
+            if (!window.PermissionManager || !window.PermissionManager.initialized) {
+                return false;
+            }
+            return window.PermissionManager.isButtonVisible('/admin/permissions', 'delete');
+        },
+        // 从所有权限中提取唯一的分组列表
+        groupOptions: function() {
+            var groups = new Set();
+            // 从所有权限数据中提取分组
+            this.allPermissions.forEach(perm => {
+                if (perm.group && perm.group.trim() !== '') {
+                    groups.add(perm.group);
+                }
+            });
+            // 转换为数组并排序
+            return Array.from(groups).sort();
+        }
+    },
+    methods: {
+        showMessage(message, type) {
+            if (type === 'success') {
+                ElMessage.success(message);
+            } else if (type === 'error') {
+                ElMessage.error(message);
+            } else {
+                ElMessage.info(message);
+            }
+        },
+        loadPermissions() {
+            const params = {
+                page: this.pagination.page,
+                page_size: this.pagination.page_size
+            };
+            
+            // 添加筛选条件
+            if (this.filters.path) {
+                params.path = this.filters.path;
+            }
+            if (this.filters.method) {
+                params.method = this.filters.method;
+            }
+            if (this.filters.name) {
+                params.name = this.filters.name;
+            }
+            if (this.filters.group) {
+                params.group = this.filters.group;
+            }
+            // 添加排序参数
+            if (this.orderBy) {
+                params.order_by = this.orderBy;
+            }
+            
+            this.tableLoading = true;
+            api.permissions.getList(params).then(res => {
+                var data = res.data;
+                this.permissions = data.data || [];
+                if (data.pagination) {
+                    this.pagination = {
+                        page: data.pagination.page,
+                        page_size: data.pagination.page_size,
+                        total: data.pagination.total,
+                        total_page: data.pagination.total_page
+                    };
+                }
+            }).catch(err => {
+                var msg = '加载权限列表失败';
+                if (err.response && err.response.data) {
+                    msg = err.response.data.msg || err.response.data.error || msg;
+                }
+                this.showMessage(msg, 'error');
+            }).finally(() => {
+                this.tableLoading = false;
+            });
+        },
+        // 加载所有权限数据（用于提取分组列表）
+        loadAllPermissionsForGroups() {
+            api.permissions.getList({
+                page: 1,
+                page_size: 1000  // 获取足够多的数据以提取所有分组
+            }).then(res => {
+                var data = res.data;
+                this.allPermissions = data.data || [];
+            }).catch(err => {
+                // 静默失败，不影响主功能
+                console.warn('加载分组列表失败:', err);
+            });
+        },
+        handleFilter() {
+            this.pagination.page = 1;
+            this.loadPermissions();
+        },
+        handleResetFilter() {
+            this.filters = {
+                path: '',
+                method: '',
+                name: '',
+                group: ''
+            };
+            this.orderBy = 'id_desc';
+            this.pagination.page = 1;
+            this.loadPermissions();
+        },
+        handleSortChange({ column, prop, order }) {
+            if (prop === 'id') {
+                if (order === 'ascending') {
+                    this.orderBy = 'id_asc';
+                } else if (order === 'descending') {
+                    this.orderBy = 'id_desc';
+                } else {
+                    this.orderBy = 'id_desc';  // 默认倒序
+                }
+                this.pagination.page = 1;
+                this.loadPermissions();
+            }
+        },
+        handleSizeChange() {
+            this.pagination.page = 1;
+            this.loadPermissions();
+        },
+        handleCurrentChange(page) {
+            this.pagination.page = page;
+            this.loadPermissions();
+        },
+        getMethodTagType(method) {
+            const types = {
+                'GET': 'success',
+                'POST': 'primary',
+                'PUT': 'warning',
+                'DELETE': 'danger',
+                'PATCH': 'info'
+            };
+            return types[method] || '';
+        },
+        handleAdd() {
+            this.dialogTitle = '添加权限';
+            this.isEdit = false;
+            this.form = { id: null, path: '', method: '', name: '', group: '', description: '' };
+            this.dialogVisible = true;
+        },
+        handleEdit(row) {
+            this.dialogTitle = '编辑权限';
+            this.isEdit = true;
+            this.form = {
+                id: row.id,
+                path: row.path,
+                method: row.method,
+                name: row.name,
+                group: row.group || '',
+                description: row.description
+            };
+            this.dialogVisible = true;
+        },
+        handleDelete(row) {
+            ElMessageBox.confirm('确定要删除该权限吗？', '提示', {
+                confirmButtonText: '确定',
+                cancelButtonText: '取消',
+                type: 'warning'
+            }).then(() => {
+                api.permissions.delete(row.id).then(() => {
+                    this.showMessage('删除成功', 'success');
+                    if (this.permissions.length === 1 && this.pagination.page > 1) {
+                        this.pagination.page--;
+                    }
+                    this.loadPermissions();
+                }).catch(err => {
+                    var msg = '删除失败';
+                    if (err.response && err.response.data) {
+                        msg = err.response.data.msg || err.response.data.error || msg;
+                    }
+                    this.showMessage(msg, 'error');
+                });
+            }).catch(() => {});
+        },
+        handleSelectionChange(selection) {
+            this.selectedPermissions = selection;
+        },
+        handleBatchDelete() {
+            if (this.selectedPermissions.length === 0) {
+                this.showMessage('请选择要删除的权限', 'warning');
+                return;
+            }
+            
+            const ids = this.selectedPermissions.map(p => p.id);
+            const count = this.selectedPermissions.length;
+            
+            ElMessageBox.confirm(`确定要删除选中的 ${count} 个权限吗？`, '提示', {
+                confirmButtonText: '确定',
+                cancelButtonText: '取消',
+                type: 'warning'
+            }).then(() => {
+                api.permissions.batchDelete(ids).then(() => {
+                    this.showMessage('批量删除成功', 'success');
+                    this.selectedPermissions = [];
+                    // 如果当前页删除后没有数据了，且不是第一页，则跳转到上一页
+                    if (this.permissions.length === ids.length && this.pagination.page > 1) {
+                        this.pagination.page--;
+                    }
+                    this.loadPermissions();
+                }).catch(err => {
+                    var msg = '批量删除失败';
+                    if (err.response && err.response.data) {
+                        msg = err.response.data.msg || err.response.data.error || msg;
+                    }
+                    this.showMessage(msg, 'error');
+                });
+            }).catch(() => {
+                // 用户取消，不做任何操作
+            });
+        },
+        handleSubmit() {
+            if (!this.form.path) {
+                this.showMessage('请输入路径', 'error');
+                return;
+            }
+            if (!this.form.method) {
+                this.showMessage('请选择方法', 'error');
+                return;
+            }
+            
+            const request = this.isEdit ? api.permissions.update(this.form.id, this.form) : api.permissions.create(this.form);
+            request.then(() => {
+                this.showMessage(this.isEdit ? '更新成功' : '创建成功', 'success');
+                this.dialogVisible = false;
+                if (!this.isEdit) {
+                    this.pagination.page = 1;
+                }
+                this.loadPermissions();
+            }).catch(err => {
+                var msg = '操作失败';
+                if (err.response && err.response.data) {
+                    msg = err.response.data.msg || err.response.data.error || msg;
+                }
+                this.showMessage(msg, 'error');
+            });
+        }
+        // 注意：navigate, closeUserMenu, getUserAvatar, getUserNickname, getUserUsername, 
+        // getUserRoles, getAvatar, handleAvatarError, handleLogout 等方法已经在基础配置中定义，不需要重复定义
+    },
+    mounted() {
+        this.loadPermissions();
+        this.loadAllPermissionsForGroups();
+    }
+};
+})();
+</script>
+[[end]]
+
+[[define "admin/permissions.html"]]
+[[template "layouts/admin.html" .]]
+[[end]]

@@ -1,0 +1,36 @@
+# 数据库配置
+db_host: localhost
+db_port: "3308"
+db_user: root
+db_password: root123456
+db_name: gadmin
+db_table_prefix: "gadmin_"  # 数据库表前缀，留空则不使用前缀
+
+# JWT密钥
+jwt_secret: your-secret-key-change-in-production
+
+# 服务端口
+port: "8080"
+
+# 日志配置
+log_type: "text"        # 日志类型: json 或 text
+log_level: "info"       # 应用日志级别: debug, info, warn, error
+log_output: ""          # 日志输出: 空字符串=标准输出，非空=文件路径（如: ./logs/app.log）
+
+# 数据库 SQL 日志配置（GORM）
+# 可选值: silent, error, warn, info
+# 建议开发/测试环境设为 info，线上设为 warn
+db_log_level: "warn"
+
+# SQL 慢查询阈值（毫秒）
+# 超过该耗时的 SQL 会被标记为 slow query
+db_slow_threshold_ms: 200
+
+# SQL 日志是否彩色输出（仅终端阅读友好，写入文件时建议关闭）
+db_log_colorful: false
+
+# Gin 框架配置
+gin_mode: "release"      # Gin 模式: debug, release, test
+
+# 操作日志定时清理（每天凌晨执行）
+operation_log_retain_count: 10000   # 保留最近 N 条，超出部分删除；可配合环境变量 OPERATION_LOG_RETAIN_COUNT

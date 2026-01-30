@@ -1,0 +1,395 @@
+[[define "content"]]
+<el-card shadow="never">
+    <template #header>
+        <div class="card-header">
+            <span class="card-title">角色管理</span>
+            <el-button v-if="canAddRole" type="primary" @click="handleAdd">
+                <el-icon><Plus /></el-icon>
+                <span>添加角色</span>
+            </el-button>
+        </div>
+    </template>
+    
+    <el-table :data="roles" border stripe :loading="tableLoading" @sort-change="handleSortChange">
+        <el-table-column prop="id" label="ID" width="80" sortable="custom"></el-table-column>
+        <el-table-column prop="name" label="角色名"></el-table-column>
+        <el-table-column prop="description" label="描述">
+            <template #default="{ row }">
+                {{ row.description || '-' }}
+            </template>
+        </el-table-column>
+        <el-table-column label="权限数量" width="100">
+            <template #default="{ row }">
+                {{ row.permissions ? row.permissions.length : 0 }}
+            </template>
+        </el-table-column>
+        <el-table-column label="操作" width="220" fixed="right">
+            <template #default="{ row }">
+                <el-button v-if="canEditRole && row.name !== '超级管理员'" size="small" @click="handleEdit(row)">编辑</el-button>
+                <el-button v-if="canAssignPermissions && row.name !== '超级管理员'" size="small" type="success" @click="handleAssignPermissions(row)">分配权限</el-button>
+                <el-button v-if="canDeleteRole && row.name !== '超级管理员'" size="small" type="danger" @click="handleDelete(row)">删除</el-button>
+            </template>
+        </el-table-column>
+    </el-table>
+    
+    [[template "components/pagination" .]]
+</el-card>
+
+<el-dialog v-model="dialogVisible" :title="dialogTitle" width="500px" @close="dialogVisible = false">
+    <el-form :model="form" label-width="80px">
+        <el-form-item label="角色名">
+            <el-input v-model="form.name" placeholder="请输入角色名"></el-input>
+        </el-form-item>
+        <el-form-item label="描述">
+            <el-input v-model="form.description" type="textarea" :rows="3" placeholder="请输入描述"></el-input>
+        </el-form-item>
+    </el-form>
+    <template #footer>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSubmit">确定</el-button>
+    </template>
+</el-dialog>
+
+<el-dialog v-model="permissionDialogVisible" title="分配权限" width="700px" @close="permissionDialogVisible = false">
+    <div style="max-height: 500px; overflow-y: auto;">
+        <div v-for="group in permissionTreeData" :key="group.id" style="margin-bottom: 20px; padding: 15px; border: 1px solid #e4e7ed; border-radius: 4px;">
+            <div style="display: flex; align-items: center; margin-bottom: 10px; font-weight: bold; font-size: 16px;">
+                <el-checkbox 
+                    :model-value="isGroupAllChecked(group)" 
+                    :indeterminate="isGroupIndeterminate(group)"
+                    @change="toggleGroup(group, $event)">
+                    {{ group.label || '未分组' }}
+                </el-checkbox>
+                <span style="margin-left: 8px; color: #909399; font-size: 14px;">
+                    (已选 {{ getGroupCheckedCount(group) }}/{{ group.children.length }})
+                </span>
+            </div>
+            <el-checkbox-group v-model="checkedPermissions" style="margin-left: 24px;">
+                <el-checkbox 
+                    v-for="perm in group.children" 
+                    :key="perm.id" 
+                    :label="perm.id" 
+                    border
+                    style="margin-right: 10px; margin-bottom: 8px;">
+                    {{ perm.label }}
+                </el-checkbox>
+            </el-checkbox-group>
+        </div>
+    </div>
+    <template #footer>
+        <el-button @click="permissionDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSavePermissions">确定</el-button>
+    </template>
+</el-dialog>
+[[end]]
+
+[[define "scripts"]]
+<script>
+(function() {
+// 页面特定的配置（只需要定义当前页面需要的数据和方法）
+// 布局模板会自动合并此配置并挂载应用
+window.pageAppConfig = {
+    data() {
+        return {
+            // 页面特定的数据（会自动与基础配置合并）
+            // 用户信息从 localStorage 获取，不再从模板传递
+            roles: [],
+            tableLoading: false,
+            permissions: [],
+            dialogVisible: false,
+            permissionDialogVisible: false,
+            isEdit: false,
+            currentRole: null,
+            form: {
+                id: null,
+                name: '',
+                description: ''
+            },
+            permissionTreeData: [],
+            checkedPermissions: [],
+            dialogTitle: '添加角色',
+            pagination: {
+                page: 1,
+                page_size: 10,
+                total: 0,
+                total_page: 0
+            },
+            orderBy: 'id_desc'  // 默认按 id 倒序
+        };
+    },
+    computed: {
+        // 按钮权限控制
+        canAddRole: function() {
+            if (!window.PermissionManager || !window.PermissionManager.initialized) {
+                return false;
+            }
+            return window.PermissionManager.isButtonVisible('/admin/roles', 'add');
+        },
+        canEditRole: function() {
+            if (!window.PermissionManager || !window.PermissionManager.initialized) {
+                return false;
+            }
+            return window.PermissionManager.isButtonVisible('/admin/roles', 'edit');
+        },
+        canDeleteRole: function() {
+            if (!window.PermissionManager || !window.PermissionManager.initialized) {
+                return false;
+            }
+            return window.PermissionManager.isButtonVisible('/admin/roles', 'delete');
+        },
+        canAssignPermissions: function() {
+            if (!window.PermissionManager || !window.PermissionManager.initialized) {
+                return false;
+            }
+            return window.PermissionManager.isButtonVisible('/admin/roles', 'assignPermissions');
+        }
+    },
+    methods: {
+        showMessage(message, type) {
+            if (type === 'success') {
+                ElMessage.success(message);
+            } else if (type === 'error') {
+                ElMessage.error(message);
+            } else {
+                ElMessage.info(message);
+            }
+        },
+        loadRoles() {
+            const params = {
+                page: this.pagination.page,
+                page_size: this.pagination.page_size
+            };
+            
+            // 添加排序参数
+            if (this.orderBy) {
+                params.order_by = this.orderBy;
+            }
+            
+            this.tableLoading = true;
+            api.roles.getList(params).then(res => {
+                var data = res.data;
+                // 检查返回的数据结构
+                if (data && data.data) {
+                    // 新格式：{data: [...], pagination: {...}}
+                    this.roles = data.data || [];
+                    if (data.pagination) {
+                        this.pagination = {
+                            page: data.pagination.page,
+                            page_size: data.pagination.page_size,
+                            total: data.pagination.total,
+                            total_page: data.pagination.total_page
+                        };
+                    }
+                } else if (Array.isArray(data)) {
+                    // 旧格式：直接是数组（兼容旧接口）
+                    this.roles = data;
+                } else {
+                    this.roles = [];
+                }
+            }).catch(err => {
+                var msg = '加载角色列表失败';
+                if (err.response && err.response.data) {
+                    msg = err.response.data.msg || err.response.data.error || msg;
+                }
+                this.showMessage(msg, 'error');
+            }).finally(() => {
+                this.tableLoading = false;
+            });
+        },
+        loadPermissions() {
+            api.permissions.getList({
+                page: 1,
+                page_size: 1000  // 获取所有权限
+            }).then(res => {
+                var data = res.data;
+                // 权限接口返回的数据结构：{data: [...], pagination: {...}}
+                this.permissions = (data && data.data) ? data.data : (Array.isArray(data) ? data : []);
+                this.buildPermissionTree();
+            }).catch(err => {
+                var msg = '加载权限列表失败';
+                if (err.response && err.response.data) {
+                    msg = err.response.data.msg || err.response.data.error || msg;
+                }
+                this.showMessage(msg, 'error');
+            });
+        },
+        buildPermissionTree() {
+            const tree = {};
+            this.permissions.forEach(perm => {
+                // 按分组分组，如果没有分组则使用"未分组"
+                const key = perm.group || '未分组';
+                if (!tree[key]) {
+                    tree[key] = {
+                        id: 'group_' + key,
+                        label: key,
+                        children: []
+                    };
+                }
+                tree[key].children.push({
+                    id: perm.id,
+                    label: perm.name || perm.path
+                });
+            });
+            // 将未分组放在最后
+            const sortedGroups = Object.values(tree).sort((a, b) => {
+                if (a.label === '未分组') return 1;
+                if (b.label === '未分组') return -1;
+                return a.label.localeCompare(b.label);
+            });
+            this.permissionTreeData = sortedGroups;
+        },
+        // 检查分组是否全选
+        isGroupAllChecked(group) {
+            if (!group || !group.children || group.children.length === 0) {
+                return false;
+            }
+            return group.children.every(perm => this.checkedPermissions.includes(perm.id));
+        },
+        // 检查分组是否为半选状态
+        isGroupIndeterminate(group) {
+            if (!group || !group.children || group.children.length === 0) {
+                return false;
+            }
+            const checkedCount = group.children.filter(perm => this.checkedPermissions.includes(perm.id)).length;
+            return checkedCount > 0 && checkedCount < group.children.length;
+        },
+        // 获取分组已选数量
+        getGroupCheckedCount(group) {
+            if (!group || !group.children) {
+                return 0;
+            }
+            return group.children.filter(perm => this.checkedPermissions.includes(perm.id)).length;
+        },
+        // 切换分组全选/取消全选
+        toggleGroup(group, checked) {
+            if (!group || !group.children) {
+                return;
+            }
+            const groupPermissionIds = group.children.map(perm => perm.id);
+            if (checked) {
+                // 全选：添加该分组所有权限（去重）
+                groupPermissionIds.forEach(id => {
+                    if (!this.checkedPermissions.includes(id)) {
+                        this.checkedPermissions.push(id);
+                    }
+                });
+            } else {
+                // 取消全选：移除该分组所有权限
+                this.checkedPermissions = this.checkedPermissions.filter(id => !groupPermissionIds.includes(id));
+            }
+        },
+        handleAdd() {
+            this.dialogTitle = '添加角色';
+            this.isEdit = false;
+            this.form = { id: null, name: '', description: '' };
+            this.dialogVisible = true;
+        },
+        handleEdit(row) {
+            this.dialogTitle = '编辑角色';
+            this.isEdit = true;
+            this.form = {
+                id: row.id,
+                name: row.name,
+                description: row.description
+            };
+            this.dialogVisible = true;
+        },
+        handleDelete(row) {
+            ElMessageBox.confirm('确定要删除该角色吗？', '提示', {
+                confirmButtonText: '确定',
+                cancelButtonText: '取消',
+                type: 'warning'
+            }).then(() => {
+                api.roles.delete(row.id).then(() => {
+                    this.showMessage('删除成功', 'success');
+                    if (this.roles.length === 1 && this.pagination.page > 1) {
+                        this.pagination.page--;
+                    }
+                    this.loadRoles();
+                }).catch(err => {
+                    var msg = '删除失败';
+                    if (err.response && err.response.data) {
+                        msg = err.response.data.msg || err.response.data.error || msg;
+                    }
+                    this.showMessage(msg, 'error');
+                });
+            }).catch(() => {});
+        },
+        handleAssignPermissions(row) {
+            this.currentRole = row;
+            this.checkedPermissions = row.permissions ? row.permissions.map(p => p.id) : [];
+            this.permissionDialogVisible = true;
+        },
+        handleSavePermissions() {
+            const permissionIds = this.checkedPermissions.filter(id => typeof id === 'number');
+            
+            api.roles.assignPermissions(this.currentRole.id, permissionIds).then(() => {
+                this.showMessage('分配权限成功', 'success');
+                this.permissionDialogVisible = false;
+                this.loadRoles();
+            }).catch(err => {
+                var msg = '分配权限失败';
+                if (err.response && err.response.data) {
+                    msg = err.response.data.msg || err.response.data.error || msg;
+                }
+                this.showMessage(msg, 'error');
+            });
+        },
+        handleSubmit() {
+            if (!this.form.name) {
+                this.showMessage('请输入角色名', 'error');
+                return;
+            }
+            
+            const request = this.isEdit ? api.roles.update(this.form.id, this.form) : api.roles.create(this.form);
+            request.then(() => {
+                this.showMessage(this.isEdit ? '更新成功' : '创建成功', 'success');
+                this.dialogVisible = false;
+                if (!this.isEdit) {
+                    this.pagination.page = 1;
+                }
+                this.loadRoles();
+            }).catch(err => {
+                var msg = '操作失败';
+                if (err.response && err.response.data) {
+                    msg = err.response.data.msg || err.response.data.error || msg;
+                }
+                this.showMessage(msg, 'error');
+            });
+        },
+        handleSortChange({ column, prop, order }) {
+            if (prop === 'id') {
+                if (order === 'ascending') {
+                    this.orderBy = 'id_asc';
+                } else if (order === 'descending') {
+                    this.orderBy = 'id_desc';
+                } else {
+                    this.orderBy = 'id_desc';  // 默认倒序
+                }
+                this.pagination.page = 1;
+                this.loadRoles();
+            }
+        },
+        handleSizeChange() {
+            this.pagination.page = 1;
+            this.loadRoles();
+        },
+        handleCurrentChange(page) {
+            this.pagination.page = page;
+            this.loadRoles();
+        }
+        // 注意：navigate, closeUserMenu, getUserAvatar, getUserNickname, getUserUsername, 
+        // getUserRoles, getAvatar, handleAvatarError, handleLogout 等方法已经在基础配置中定义，不需要重复定义
+    },
+    mounted() {
+        this.loadRoles();
+        this.loadPermissions();
+    }
+};
+})();
+</script>
+[[end]]
+
+[[define "admin/roles.html"]]
+[[template "layouts/admin.html" .]]
+[[end]]

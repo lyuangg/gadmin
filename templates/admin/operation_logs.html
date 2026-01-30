@@ -1,0 +1,308 @@
+[[define "content"]]
+<el-card shadow="never">
+    <template #header>
+        <div class="card-header">
+            <span class="card-title">操作日志</span>
+        </div>
+    </template>
+
+    <el-form :inline="true" :model="filters">
+        <el-form-item label="用户名">
+            <el-input v-model="filters.username" placeholder="请输入用户名" clearable @keyup.enter="handleFilter"></el-input>
+        </el-form-item>
+        <el-form-item label="方法">
+            <el-select v-model="filters.method" placeholder="全部" clearable style="width: 100px">
+                <el-option label="全部" value=""></el-option>
+                <el-option label="POST" value="POST"></el-option>
+                <el-option label="PUT" value="PUT"></el-option>
+                <el-option label="DELETE" value="DELETE"></el-option>
+            </el-select>
+        </el-form-item>
+        <el-form-item label="路径">
+            <el-input v-model="filters.path" placeholder="请输入路径关键字" clearable @keyup.enter="handleFilter"></el-input>
+        </el-form-item>
+        <el-form-item label="时间范围">
+            <el-date-picker
+                v-model="filters.timeRange"
+                type="datetimerange"
+                start-placeholder="开始时间"
+                end-placeholder="结束时间"
+                range-separator="至"
+                format="YYYY-MM-DD HH:mm:ss"
+                value-format="YYYY-MM-DDTHH:mm:ss[Z]"
+                :shortcuts="timeShortcuts"
+                clearable>
+            </el-date-picker>
+        </el-form-item>
+        <el-form-item>
+            <el-button type="primary" @click="handleFilter" :loading="tableLoading">筛选</el-button>
+            <el-button @click="handleResetFilter" :disabled="tableLoading">重置</el-button>
+        </el-form-item>
+    </el-form>
+
+    <el-table :data="logs" border stripe :loading="tableLoading" @sort-change="handleSortChange">
+        <el-table-column prop="id" label="ID" width="80" sortable="custom"></el-table-column>
+        <el-table-column prop="created_at" label="时间" width="180" sortable="custom">
+            <template #default="{ row }">
+                {{ formatDate(row.created_at) }}
+            </template>
+        </el-table-column>
+        <el-table-column prop="username" label="用户名" width="140"></el-table-column>
+        <el-table-column prop="nickname" label="昵称" width="140">
+            <template #default="{ row }">
+                {{ row.nickname || '-' }}
+            </template>
+        </el-table-column>
+        <el-table-column prop="method" label="方法" width="90">
+            <template #default="{ row }">
+                <el-tag
+                    :type="row.method === 'POST' ? 'success' : (row.method === 'PUT' ? 'warning' : (row.method === 'DELETE' ? 'danger' : 'info'))"
+                    size="small">
+                    {{ row.method }}
+                </el-tag>
+            </template>
+        </el-table-column>
+        <el-table-column prop="path" label="路径" min-width="220"></el-table-column>
+        <el-table-column prop="route_name" label="路由名称" min-width="160"></el-table-column>
+        <el-table-column prop="status_code" label="状态码" width="100">
+            <template #default="{ row }">
+                <el-tag
+                    :type="row.status_code >= 200 && row.status_code < 300 ? 'success' :
+                           (row.status_code >= 400 && row.status_code < 500 ? 'warning' : 'danger')"
+                    size="small">
+                    {{ row.status_code }}
+                </el-tag>
+            </template>
+        </el-table-column>
+        <el-table-column prop="ip" label="IP" width="140"></el-table-column>
+        <el-table-column prop="duration" label="耗时(ms)" width="110">
+            <template #default="{ row }">
+                {{ row.duration }}
+            </template>
+        </el-table-column>
+        <el-table-column label="请求/响应" width="160" fixed="right">
+            <template #default="{ row }">
+                <el-button size="small" @click="showDetail(row, 'request')">查看请求</el-button>
+                <el-button size="small" @click="showDetail(row, 'response')">查看响应</el-button>
+            </template>
+        </el-table-column>
+    </el-table>
+
+    [[template "components/pagination" .]]
+</el-card>
+
+<el-dialog v-model="detailDialogVisible" :title="detailDialogTitle" width="700px">
+    <pre style="max-height: 500px; overflow: auto; background: #0f172a; color: #e5e7eb; padding: 16px; border-radius: 6px; font-size: 12px;">{{ detailContent }}</pre>
+    <template #footer>
+        <el-button @click="detailDialogVisible = false">关闭</el-button>
+    </template>
+</el-dialog>
+[[end]]
+
+[[define "scripts"]]
+<script>
+(function() {
+window.pageAppConfig = {
+    data() {
+        return {
+            logs: [],
+            tableLoading: false,
+            pagination: {
+                page: 1,
+                page_size: 10,
+                total: 0,
+                total_page: 0
+            },
+            filters: {
+                username: '',
+                method: '',
+                path: '',
+                status_code: '',
+                timeRange: null
+            },
+            orderBy: 'id_desc',
+            timeShortcuts: [
+                {
+                    text: '最近一小时',
+                    value: () => {
+                        const end = new Date();
+                        const start = new Date();
+                        start.setTime(start.getTime() - 3600 * 1000);
+                        return [start, end];
+                    }
+                },
+                {
+                    text: '今天',
+                    value: () => {
+                        const end = new Date();
+                        const start = new Date();
+                        start.setHours(0, 0, 0, 0);
+                        return [start, end];
+                    }
+                },
+                {
+                    text: '最近三天',
+                    value: () => {
+                        const end = new Date();
+                        const start = new Date();
+                        start.setTime(start.getTime() - 3 * 24 * 3600 * 1000);
+                        return [start, end];
+                    }
+                },
+                {
+                    text: '最近一周',
+                    value: () => {
+                        const end = new Date();
+                        const start = new Date();
+                        start.setTime(start.getTime() - 7 * 24 * 3600 * 1000);
+                        return [start, end];
+                    }
+                }
+            ],
+            detailDialogVisible: false,
+            detailDialogTitle: '',
+            detailContent: ''
+        };
+    },
+    methods: {
+        showMessage(message, type) {
+            if (type === 'success') {
+                ElMessage.success(message);
+            } else if (type === 'error') {
+                ElMessage.error(message);
+            } else {
+                ElMessage.info(message);
+            }
+        },
+        fetchLogs() {
+            const params = {
+                page: this.pagination.page,
+                page_size: this.pagination.page_size
+            };
+
+            if (this.filters.username) {
+                params.username = this.filters.username;
+            }
+            if (this.filters.method) {
+                params.method = this.filters.method;
+            }
+            if (this.filters.path) {
+                params.path = this.filters.path;
+            }
+            if (this.filters.status_code) {
+                params.status_code = this.filters.status_code;
+            }
+            if (this.filters.timeRange && this.filters.timeRange.length === 2) {
+                params.start_time = this.filters.timeRange[0];
+                params.end_time = this.filters.timeRange[1];
+            }
+            if (this.orderBy) {
+                params.order_by = this.orderBy;
+            }
+
+            this.tableLoading = true;
+            api.operationLogs.getList(params).then(res => {
+                var data = res.data;
+                this.logs = data.data || [];
+                if (data.pagination) {
+                    this.pagination = {
+                        page: data.pagination.page,
+                        page_size: data.pagination.page_size,
+                        total: data.pagination.total,
+                        total_page: data.pagination.total_page
+                    };
+                }
+            }).catch(err => {
+                var msg = '获取操作日志失败';
+                if (err.response && err.response.data) {
+                    msg = err.response.data.msg || err.response.data.error || msg;
+                }
+                this.showMessage(msg, 'error');
+            }).finally(() => {
+                this.tableLoading = false;
+            });
+        },
+        handleFilter() {
+            this.pagination.page = 1;
+            this.fetchLogs();
+        },
+        handleResetFilter() {
+            this.filters = {
+                username: '',
+                method: '',
+                path: '',
+                status_code: '',
+                timeRange: null
+            };
+            this.orderBy = 'id_desc';
+            this.pagination.page = 1;
+            this.fetchLogs();
+        },
+        handleSortChange({ prop, order }) {
+            if (prop === 'id') {
+                if (order === 'ascending') {
+                    this.orderBy = 'id_asc';
+                } else if (order === 'descending') {
+                    this.orderBy = 'id_desc';
+                } else {
+                    this.orderBy = 'id_desc';
+                }
+            } else if (prop === 'created_at') {
+                if (order === 'ascending') {
+                    this.orderBy = 'created_at_asc';
+                } else if (order === 'descending') {
+                    this.orderBy = 'created_at_desc';
+                } else {
+                    this.orderBy = 'id_desc';
+                }
+            }
+            this.pagination.page = 1;
+            this.fetchLogs();
+        },
+        handleSizeChange() {
+            this.pagination.page = 1;
+            this.fetchLogs();
+        },
+        handleCurrentChange(page) {
+            this.pagination.page = page;
+            this.fetchLogs();
+        },
+        formatDate(dateString) {
+            if (!dateString) return '-';
+            try {
+                const date = new Date(dateString);
+                if (isNaN(date.getTime())) return dateString;
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                const hours = String(date.getHours()).padStart(2, '0');
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+                const seconds = String(date.getSeconds()).padStart(2, '0');
+                return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+            } catch (e) {
+                return dateString;
+            }
+        },
+        showDetail(row, type) {
+            if (type === 'request') {
+                this.detailDialogTitle = '请求数据';
+                this.detailContent = row.request || '';
+            } else {
+                this.detailDialogTitle = '响应数据';
+                this.detailContent = row.response || '';
+            }
+            this.detailDialogVisible = true;
+        }
+    },
+    mounted() {
+        this.fetchLogs();
+    }
+};
+})();
+</script>
+[[end]]
+
+[[define "admin/operation_logs.html"]]
+[[template "layouts/admin.html" .]]
+[[end]]
+

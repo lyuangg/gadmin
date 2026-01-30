@@ -1,0 +1,496 @@
+[[define "content"]]
+<el-card shadow="never">
+    <template #header>
+        <span>更换头像</span>
+    </template>
+    
+    <div style="text-align: center; padding: 20px 0;">
+        <div style="margin-bottom: 30px;">
+            <el-avatar :src="currentAvatar" :size="120" @error="handleAvatarError">
+                <img src="data:image/svg+xml;utf8,<svg width='120' height='120' viewBox='0 0 120 120' fill='none' xmlns='http://www.w3.org/2000/svg'><circle cx='60' cy='60' r='60' fill='%23e5e7eb'/><circle cx='60' cy='45' r='18' fill='%239ca3af'/><path d='M30 90C30 75 45 69 60 69C75 69 90 75 90 90V96H30V90Z' fill='%239ca3af'/></svg>" />
+            </el-avatar>
+            <div style="margin-top: 16px; font-size: 14px; color: #606266;">当前头像</div>
+            <!-- 背景色选择器（对 DiceBear 和 UI Avatars 头像显示） -->
+            <div v-if="currentAvatar && (currentAvatar.indexOf('api.dicebear.com') !== -1 || currentAvatar.indexOf('ui-avatars.com') !== -1)" style="margin-top: 16px;">
+                <div style="display: inline-flex; align-items: center; gap: 12px;">
+                    <span style="font-size: 14px; color: #606266;">自定义背景色：</span>
+                    <el-color-picker v-model="customBackgroundColor" @change="updateCurrentAvatarBackground" size="default"></el-color-picker>
+                    <el-button size="small" @click="resetCurrentAvatarBackground" style="margin-left: 8px;">重置</el-button>
+                </div>
+            </div>
+        </div>
+        
+        <el-divider>选择头像</el-divider>
+        
+        <div style="display: flex; flex-wrap: wrap; gap: 20px; justify-content: flex-start; max-width: 1080px; padding: 0 50px; margin: 0 auto;">
+            <div 
+                v-for="(avatar, index) in avatarOptions" 
+                :key="index"
+                :class="['avatar-option', { 'avatar-selected': selectedAvatarIndex === index }]"
+                :style="selectedAvatarIndex === index ? { backgroundColor: '#dcdfe6', boxShadow: '0 2px 12px rgba(0, 0, 0, 0.15)', transform: 'scale(1.05)', borderRadius: '50%' } : { borderRadius: '50%' }"
+                @click="selectAvatarByIndex(index, avatar)">
+                <el-avatar v-if="avatar" :src="avatar" :size="80" @error="handleAvatarError">
+                    <img src="data:image/svg+xml;utf8,<svg width='80' height='80' viewBox='0 0 80 80' fill='none' xmlns='http://www.w3.org/2000/svg'><circle cx='40' cy='40' r='40' fill='%23e5e7eb'/><circle cx='40' cy='30' r='12' fill='%239ca3af'/><path d='M20 60C20 50 30 46 40 46C50 46 60 50 60 60V64H20V60Z' fill='%239ca3af'/></svg>" />
+                </el-avatar>
+                <el-avatar v-else :size="80" @error="handleAvatarError">
+                    <img src="data:image/svg+xml;utf8,<svg width='80' height='80' viewBox='0 0 80 80' fill='none' xmlns='http://www.w3.org/2000/svg'><circle cx='40' cy='40' r='40' fill='%23e5e7eb'/><circle cx='40' cy='30' r='12' fill='%239ca3af'/><path d='M20 60C20 50 30 46 40 46C50 46 60 50 60 60V64H20V60Z' fill='%239ca3af'/></svg>" />
+                </el-avatar>
+            </div>
+        </div>
+        
+        <div style="margin-top: 30px;">
+            <el-button type="primary" @click="handleSubmit" :loading="loading" size="large">保存头像</el-button>
+            <el-button @click="handleCancel" style="margin-left: 12px;">取消</el-button>
+        </div>
+    </div>
+</el-card>
+<style>
+.avatar-option {
+    cursor: pointer;
+    padding: 20px;
+    border: 2px solid #e4e7ed;
+    border-radius: 50%;
+    transition: all 0.3s;
+    text-align: center;
+    background-color: #ffffff;
+    width: 124px;
+    height: 124px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+.avatar-option .el-avatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.avatar-option:hover:not(.avatar-selected) {
+    border-color: #409eff;
+    transform: scale(1.05);
+    background-color: #f5f7fa;
+}
+.avatar-selected {
+    border: 2px solid #e4e7ed !important;
+    background-color: #dcdfe6 !important;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15) !important;
+    transform: scale(1.05) !important;
+}
+.avatar-selected:hover {
+    border: 2px solid #e4e7ed !important;
+    background-color: #dcdfe6 !important;
+    transform: scale(1.05) !important;
+}
+</style>
+[[end]]
+
+[[define "scripts"]]
+<script>
+// 页面特定的配置（只需要定义当前页面需要的数据和方法）
+// 布局模板会自动合并此配置并挂载应用
+window.pageAppConfig = {
+    data() {
+        // 获取当前用户昵称，用于生成头像
+        var nickname = '';
+        try {
+            var userData = localStorage.getItem('user');
+            if (userData) {
+                var user = JSON.parse(userData);
+                nickname = user.nickname || user.username || 'User';
+            }
+        } catch (e) {
+            console.error('获取用户信息失败:', e);
+        }
+        
+        // 处理昵称：中文取一个字，英文取前两个字母
+        var avatarName = '';
+        if (nickname) {
+            // 判断第一个字符是否是中文字符（Unicode范围：\u4e00-\u9fa5）
+            var firstChar = nickname.charAt(0);
+            var isChinese = /[\u4e00-\u9fa5]/.test(firstChar);
+            
+            if (isChinese) {
+                // 中文：取第一个字符
+                avatarName = firstChar;
+            } else {
+                // 英文：取前两个字符（去除空格）
+                var englishName = nickname.replace(/\s+/g, '');
+                avatarName = englishName.substring(0, 2).toUpperCase();
+                if (avatarName.length === 0) {
+                    avatarName = 'U';
+                }
+            }
+        } else {
+            avatarName = 'U';
+        }
+        
+        // 生成预设头像选项
+        var avatarOptions = [];
+        
+        // 0. 默认头像（空字符串，表示使用系统默认）
+        avatarOptions.push(''); // 索引0是默认头像
+        
+        // 1. 文字头像（使用 UI Avatars API）- 不同背景色
+        var colors = [
+            '0d8bd9', // 蓝色
+            '00a86b', // 绿色
+            'f56c6c', // 红色
+            'e6a23c', // 橙色
+            '909399', // 灰色
+            '303133'  // 更深灰
+        ];
+        
+        // 为每个颜色生成一个文字头像
+        for (var i = 0; i < colors.length; i++) {
+            var color = colors[i];
+            // UI Avatars API: name=处理后的昵称, background=背景色, color=文字颜色, size=尺寸, bold=粗体
+            var avatarURL = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(avatarName) + 
+                          '&background=' + color + 
+                          '&color=fff&size=128&bold=true';
+            avatarOptions.push(avatarURL);
+        }
+        
+        // 默认背景色（多个颜色，随机选择）
+        var defaultBackgroundColors = 'b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf';
+        
+        // DiceBear 头像风格列表（每个风格生成 8 个头像）
+        var dicebearStyles = [
+            { name: 'toon-head', displayName: 'ToonHead', version: '9.x' },
+            { name: 'avataaars', displayName: 'Avataaars' },
+            { name: 'bottts', displayName: 'Bottts' },
+            { name: 'lorelei', displayName: 'Lorelei' },
+            { name: 'pixel-art', displayName: 'Pixel Art' },
+            { name: 'icons', displayName: 'Icons' },
+            { name: 'fun-emoji', displayName: 'Fun Emoji' },
+            { name: 'dylan', displayName: 'Dylan', version: '9.x' }
+        ];
+        
+        // 为每个风格生成 8 个头像
+        for (var styleIdx = 0; styleIdx < dicebearStyles.length; styleIdx++) {
+            var style = dicebearStyles[styleIdx];
+            var apiVersion = style.version || '7.x'; // 默认使用 7.x，toonhead 使用 9.x
+            for (var seedIdx = 1; seedIdx <= 8; seedIdx++) {
+                // 使用不同的 seed 生成不同风格的头像
+                var seed = avatarName + style.name + seedIdx;
+                var avatarURL = 'https://api.dicebear.com/' + apiVersion + '/' + style.name + '/svg?seed=' + encodeURIComponent(seed) + '&backgroundColor=' + defaultBackgroundColors;
+                avatarOptions.push(avatarURL);
+            }
+        }
+        
+        // 获取当前头像
+        var savedAvatar = '';
+        try {
+            var userData = localStorage.getItem('user');
+            if (userData) {
+                var user = JSON.parse(userData);
+                savedAvatar = user.avatar || '';
+            }
+        } catch (e) {
+            console.error('获取用户信息失败:', e);
+        }
+        
+        // 默认头像的 SVG（用于显示）
+        var defaultAvatarSVG = 'data:image/svg+xml;utf8,<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="60" cy="60" r="60" fill="%23e5e7eb"/><circle cx="60" cy="45" r="18" fill="%239ca3af"/><path d="M30 90C30 75 45 69 60 69C75 69 90 75 90 90V96H30V90Z" fill="%239ca3af"/></svg>';
+        
+        // 查找当前头像在选项中的索引，如果找不到或为空则返回 0（表示选择默认，索引0）
+        var selectedAvatarIndex = 0; // 默认为索引0（默认头像）
+        var currentAvatar = defaultAvatarSVG; // 当前显示的头像，默认为默认 SVG
+        var customBgColor = null; // 自定义背景色
+        
+        if (savedAvatar && savedAvatar.trim() !== '') {
+            // 有保存的头像，设置为当前头像
+            currentAvatar = savedAvatar;
+            
+            // 查找在选项中的索引
+            for (var i = 0; i < avatarOptions.length; i++) {
+                if (avatarOptions[i] === savedAvatar) {
+                    selectedAvatarIndex = i;
+                    break;
+                }
+            }
+            
+            // 如果当前头像是 DiceBear 或 UI Avatars 头像，尝试从 URL 中提取背景色
+            if (currentAvatar.indexOf('api.dicebear.com') !== -1) {
+                try {
+                    var url = new URL(currentAvatar);
+                    var bgColor = url.searchParams.get('backgroundColor');
+                    // 如果背景色是单个颜色（不是多个颜色），设置到颜色选择器
+                    if (bgColor && bgColor.indexOf(',') === -1) {
+                        customBgColor = '#' + bgColor;
+                    }
+                } catch (e) {
+                    // URL 解析失败，忽略
+                }
+            } else if (currentAvatar.indexOf('ui-avatars.com') !== -1) {
+                try {
+                    var url = new URL(currentAvatar);
+                    var bgColor = url.searchParams.get('background');
+                    // UI Avatars 的背景色是不带 # 的十六进制
+                    if (bgColor) {
+                        customBgColor = '#' + bgColor;
+                    }
+                } catch (e) {
+                    // URL 解析失败，忽略
+                }
+            }
+        }
+        
+        console.log('头像选项数量:', avatarOptions.length);
+        console.log('头像选项:', avatarOptions);
+        
+        return {
+            loading: false,
+            avatarOptions: avatarOptions,
+            selectedAvatar: savedAvatar, // 保存实际的头像URL（用于保存）
+            selectedAvatarIndex: selectedAvatarIndex, // 保存选中的索引，0表示默认头像
+            currentAvatar: currentAvatar, // 用于显示当前头像（会实时更新）
+            customBackgroundColor: customBgColor, // 自定义背景色
+            avatarName: avatarName, // 保存处理后的昵称，用于重新生成头像
+            defaultBackgroundColors: defaultBackgroundColors // 默认背景色
+        };
+    },
+    methods: {
+        showMessage(message, type) {
+            if (type === 'success') {
+                ElMessage.success(message);
+            } else if (type === 'error') {
+                ElMessage.error(message);
+            } else {
+                ElMessage.info(message);
+            }
+        },
+        selectAvatar(avatar) {
+            this.selectedAvatar = avatar;
+            // 查找对应的索引
+            var index = this.avatarOptions.indexOf(avatar);
+            this.selectedAvatarIndex = index >= 0 ? index : 0; // 如果找不到，默认选择索引0
+        },
+        selectAvatarByIndex(index, avatar) {
+            this.selectedAvatarIndex = index;
+            // 如果选择的是索引0（默认头像），设置为空字符串
+            var selectedAvatar = index === 0 ? '' : avatar;
+            this.selectedAvatar = selectedAvatar;
+            
+            // 更新当前头像显示
+            if (index === 0) {
+                // 默认头像使用 SVG
+                var defaultAvatarSVG = 'data:image/svg+xml;utf8,<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="60" cy="60" r="60" fill="%23e5e7eb"/><circle cx="60" cy="45" r="18" fill="%239ca3af"/><path d="M30 90C30 75 45 69 60 69C75 69 90 75 90 90V96H30V90Z" fill="%239ca3af"/></svg>';
+                this.currentAvatar = defaultAvatarSVG;
+            } else {
+                this.currentAvatar = avatar;
+            }
+            
+            // 如果当前头像是 DiceBear 或 UI Avatars 头像，尝试从 URL 中提取背景色
+            if (this.currentAvatar && this.currentAvatar.indexOf('api.dicebear.com') !== -1) {
+                try {
+                    var url = new URL(this.currentAvatar);
+                    var bgColor = url.searchParams.get('backgroundColor');
+                    // 如果背景色是单个颜色（不是多个颜色），设置到颜色选择器
+                    if (bgColor && bgColor.indexOf(',') === -1) {
+                        this.customBackgroundColor = '#' + bgColor;
+                    } else {
+                        this.customBackgroundColor = null;
+                    }
+                } catch (e) {
+                    this.customBackgroundColor = null;
+                }
+            } else if (this.currentAvatar && this.currentAvatar.indexOf('ui-avatars.com') !== -1) {
+                try {
+                    var url = new URL(this.currentAvatar);
+                    var bgColor = url.searchParams.get('background');
+                    // UI Avatars 的背景色是不带 # 的十六进制
+                    if (bgColor) {
+                        this.customBackgroundColor = '#' + bgColor;
+                    } else {
+                        this.customBackgroundColor = null;
+                    }
+                } catch (e) {
+                    this.customBackgroundColor = null;
+                }
+            } else {
+                // 不是 DiceBear 或 UI Avatars 头像，清除颜色选择器
+                this.customBackgroundColor = null;
+            }
+            
+            console.log('选中头像索引:', index, '当前头像URL:', this.currentAvatar);
+        },
+        handleSubmit() {
+            this.loading = true;
+            // 保存当前头像（currentAvatar）
+            // 如果 currentAvatar 是默认 SVG，保存空字符串
+            var avatarToSave = '';
+            if (this.currentAvatar && this.currentAvatar.indexOf('data:image/svg+xml') === -1) {
+                // 不是默认 SVG，保存实际 URL
+                avatarToSave = this.currentAvatar;
+            }
+            
+            api.profile.updateAvatar(avatarToSave).then(() => {
+                this.showMessage('头像更新成功', 'success');
+                
+                // 更新 localStorage 中的用户信息
+                try {
+                    var userData = localStorage.getItem('user');
+                    if (userData) {
+                        var user = JSON.parse(userData);
+                        user.avatar = avatarToSave;
+                        localStorage.setItem('user', JSON.stringify(user));
+                        // 更新全局用户菜单数据
+                        if (window.userMenuData) {
+                            window.userMenuData.avatar = avatarToSave;
+                        }
+                    }
+                } catch (e) {
+                    console.error('更新用户信息失败:', e);
+                }
+                
+                // 延迟跳转，让用户看到成功提示
+                setTimeout(() => {
+                    window.location.href = '/admin';
+                }, 1000);
+            }).catch(err => {
+                var msg = '头像更新失败';
+                if (err.response && err.response.data) {
+                    msg = err.response.data.msg || err.response.data.error || msg;
+                }
+                this.showMessage(msg, 'error');
+            }).finally(() => {
+                this.loading = false;
+            });
+        },
+        handleCancel() {
+            window.location.href = '/admin';
+        },
+        handleAvatarError(event) {
+            // 头像加载失败时使用默认 SVG
+            console.warn('头像加载失败:', event.target.src);
+            event.target.src = 'data:image/svg+xml;utf8,<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="60" cy="60" r="60" fill="%23e5e7eb"/><circle cx="60" cy="45" r="18" fill="%239ca3af"/><path d="M30 90C30 75 45 69 60 69C75 69 90 75 90 90V96H30V90Z" fill="%239ca3af"/></svg>';
+        },
+        // 将十六进制颜色转换为不带#的格式
+        hexToRgb(hex) {
+            if (!hex) return '';
+            // 移除 # 号
+            hex = hex.replace('#', '');
+            return hex;
+        },
+        // 判断是否是 DiceBear 头像（索引 > 9，且是 DiceBear API URL）
+        isDiceBearAvatar(index) {
+            if (index <= 0 || index >= this.avatarOptions.length) return false;
+            var avatar = this.avatarOptions[index];
+            return avatar && avatar.indexOf('api.dicebear.com') !== -1;
+        },
+        // 从 DiceBear URL 中解析出风格和 seed
+        parseDiceBearURL(url) {
+            if (!url || url.indexOf('api.dicebear.com') === -1) return null;
+            
+            try {
+                var urlObj = new URL(url);
+                var pathParts = urlObj.pathname.split('/');
+                // 路径格式: /7.x/{style}/svg
+                var style = pathParts[2];
+                var seed = urlObj.searchParams.get('seed');
+                
+                return {
+                    style: style,
+                    seed: seed
+                };
+            } catch (e) {
+                return null;
+            }
+        },
+        // 更新当前头像的背景色
+        updateCurrentAvatarBackground(color) {
+            if (!color || !this.currentAvatar) return;
+            
+            // 处理 DiceBear 头像
+            if (this.currentAvatar.indexOf('api.dicebear.com') !== -1) {
+                var parsed = this.parseDiceBearURL(this.currentAvatar);
+                
+                if (!parsed) {
+                    return;
+                }
+                
+                // 需要确定 API 版本（7.x 或 9.x）
+                var urlObj = new URL(this.currentAvatar);
+                var pathParts = urlObj.pathname.split('/');
+                var apiVersion = pathParts[1]; // 7.x 或 9.x
+                
+                var bgColor = this.hexToRgb(color);
+                var newURL = 'https://api.dicebear.com/' + apiVersion + '/' + parsed.style + '/svg?seed=' + encodeURIComponent(parsed.seed) + '&backgroundColor=' + bgColor;
+                
+                // 更新当前头像
+                this.currentAvatar = newURL;
+                this.selectedAvatar = newURL;
+            } 
+            // 处理 UI Avatars 头像
+            else if (this.currentAvatar.indexOf('ui-avatars.com') !== -1) {
+                try {
+                    var urlObj = new URL(this.currentAvatar);
+                    var name = urlObj.searchParams.get('name') || this.avatarName;
+                    var bgColor = this.hexToRgb(color); // 移除 # 号
+                    var newURL = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(name) + 
+                               '&background=' + bgColor + 
+                               '&color=fff&size=128&bold=true';
+                    
+                    // 更新当前头像
+                    this.currentAvatar = newURL;
+                    this.selectedAvatar = newURL;
+                } catch (e) {
+                    console.error('更新 UI Avatars 背景色失败:', e);
+                }
+            }
+        },
+        // 重置当前头像的背景色
+        resetCurrentAvatarBackground() {
+            if (!this.currentAvatar) return;
+            
+            // 处理 DiceBear 头像
+            if (this.currentAvatar.indexOf('api.dicebear.com') !== -1) {
+                var parsed = this.parseDiceBearURL(this.currentAvatar);
+                
+                if (!parsed) {
+                    return;
+                }
+                
+                // 需要确定 API 版本（7.x 或 9.x）
+                var urlObj = new URL(this.currentAvatar);
+                var pathParts = urlObj.pathname.split('/');
+                var apiVersion = pathParts[1]; // 7.x 或 9.x
+                
+                // 使用默认背景色重新生成
+                var defaultBg = this.defaultBackgroundColors;
+                var newURL = 'https://api.dicebear.com/' + apiVersion + '/' + parsed.style + '/svg?seed=' + encodeURIComponent(parsed.seed) + '&backgroundColor=' + defaultBg;
+                
+                // 更新当前头像
+                this.currentAvatar = newURL;
+                this.selectedAvatar = newURL;
+                this.customBackgroundColor = null;
+            }
+            // 处理 UI Avatars 头像 - 重置为第一个默认颜色
+            else if (this.currentAvatar.indexOf('ui-avatars.com') !== -1) {
+                try {
+                    var urlObj = new URL(this.currentAvatar);
+                    var name = urlObj.searchParams.get('name') || this.avatarName;
+                    // 使用第一个默认颜色（蓝色）
+                    var defaultBg = '0d8bd9';
+                    var newURL = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(name) + 
+                               '&background=' + defaultBg + 
+                               '&color=fff&size=128&bold=true';
+                    
+                    // 更新当前头像
+                    this.currentAvatar = newURL;
+                    this.selectedAvatar = newURL;
+                    this.customBackgroundColor = '#' + defaultBg;
+                } catch (e) {
+                    console.error('重置 UI Avatars 背景色失败:', e);
+                }
+            }
+        }
+    }
+};
+</script>
+[[end]]
+
+[[define "admin/avatar.html"]]
+[[template "layouts/admin.html" .]]
+[[end]]

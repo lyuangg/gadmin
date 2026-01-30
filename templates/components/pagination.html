@@ -1,0 +1,15 @@
+[[define "components/pagination"]]
+<div style="margin-top: 24px; display: flex; justify-content: center;">
+    <el-pagination
+        v-model:current-page="pagination.page"
+        v-model:page-size="pagination.page_size"
+        :page-sizes="[10, 20, 50, 100]"
+        :total="pagination.total"
+        layout="first, prev, pager, next, last, total, sizes"
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentChange"
+        size="small"
+        background
+    />
+</div>
+[[end]]

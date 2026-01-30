@@ -1,0 +1,573 @@
+[[define "content"]]
+<el-card shadow="never">
+    <template #header>
+        <div class="card-header">
+            <span class="card-title">用户管理</span>
+            <el-button v-if="canAddUser" type="primary" @click="handleAdd">
+                <el-icon><Plus /></el-icon>
+                <span>添加用户</span>
+            </el-button>
+        </div>
+    </template>
+    
+    <el-form :inline="true" :model="filters">
+        <el-form-item label="账号">
+            <el-input v-model="filters.username" placeholder="请输入账号" clearable @keyup.enter="handleFilter"></el-input>
+        </el-form-item>
+        <el-form-item label="昵称">
+            <el-input v-model="filters.nickname" name="filter-nickname" autocomplete="off" placeholder="请输入昵称" clearable @keyup.enter="handleFilter"></el-input>
+        </el-form-item>
+        <el-form-item label="类型">
+            <el-select v-model="filters.type" placeholder="全部" clearable>
+                <el-option label="全部" value=""></el-option>
+                <el-option label="内部用户" value="0"></el-option>
+                <el-option label="外部用户" value="1"></el-option>
+            </el-select>
+        </el-form-item>
+        <el-form-item label="角色">
+            <el-select v-model="filters.role_id" placeholder="全部" clearable>
+                <el-option label="全部" value=""></el-option>
+                <el-option v-for="role in roles" :key="role.id" :label="role.name" :value="role.id"></el-option>
+            </el-select>
+        </el-form-item>
+        <el-form-item label="状态">
+            <el-select v-model="filters.status" placeholder="全部" clearable>
+                <el-option label="全部" value=""></el-option>
+                <el-option label="启用" value="1"></el-option>
+                <el-option label="禁用" value="0"></el-option>
+            </el-select>
+        </el-form-item>
+        <el-form-item>
+            <el-button type="primary" @click="handleFilter" :loading="tableLoading">筛选</el-button>
+            <el-button @click="handleResetFilter" :disabled="tableLoading">重置</el-button>
+        </el-form-item>
+    </el-form>
+    
+    <el-table :data="users" border stripe :loading="tableLoading" @sort-change="handleSortChange">
+        <el-table-column prop="id" label="ID" width="80" sortable="custom"></el-table-column>
+        <el-table-column label="头像" width="80">
+            <template #default="{ row }">
+                <el-avatar :src="getAvatar(row.avatar)" :size="40" @error="handleAvatarError">
+                    <img src="data:image/svg+xml;utf8,<svg width='40' height='40' viewBox='0 0 40 40' fill='none' xmlns='http://www.w3.org/2000/svg'><circle cx='20' cy='20' r='20' fill='%23e5e7eb'/><circle cx='20' cy='15' r='6' fill='%239ca3af'/><path d='M10 30C10 25 14 23 20 23C26 23 30 25 30 30V32H10V30Z' fill='%239ca3af'/></svg>" />
+                </el-avatar>
+            </template>
+        </el-table-column>
+        <el-table-column prop="username" label="用户名"></el-table-column>
+        <el-table-column prop="nickname" label="昵称">
+            <template #default="{ row }">
+                {{ row.nickname || '-' }}
+            </template>
+        </el-table-column>
+        <el-table-column label="类型" width="100">
+            <template #default="{ row }">
+                <el-tag :type="row.type === 0 ? 'primary' : 'success'" size="small">{{ getTypeName(row.type) }}</el-tag>
+            </template>
+        </el-table-column>
+        <el-table-column label="角色">
+            <template #default="{ row }">
+                <el-tag v-for="role in row.roles" :key="role.id" size="small">{{ role.name }}</el-tag>
+            </template>
+        </el-table-column>
+        <el-table-column label="状态" width="80">
+            <template #default="{ row }">
+                <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small">{{ getStatusName(row.status) }}</el-tag>
+            </template>
+        </el-table-column>
+        <el-table-column prop="remark" label="备注" min-width="120" show-overflow-tooltip>
+            <template #default="{ row }">
+                {{ row.remark || '-' }}
+            </template>
+        </el-table-column>
+        <el-table-column prop="created_at" label="创建时间" width="180">
+            <template #default="{ row }">
+                {{ formatDate(row.created_at) }}
+            </template>
+        </el-table-column>
+        <el-table-column label="操作" width="280" fixed="right">
+            <template #default="{ row }">
+                <el-button v-if="canEditUser" size="small" @click="handleEdit(row)">编辑</el-button>
+                <el-button v-if="canToggleStatus" size="small" :type="row.status === 1 ? 'warning' : 'success'" @click="handleToggleStatus(row)">
+                    {{ row.status === 1 ? '禁用' : '启用' }}
+                </el-button>
+                <el-button v-if="canResetPassword" size="small" type="warning" @click="handleResetPassword(row)">重置密码</el-button>
+                <el-button v-if="canDeleteUser" size="small" type="danger" @click="handleDelete(row)">删除</el-button>
+            </template>
+        </el-table-column>
+    </el-table>
+    
+    [[template "components/pagination" .]]
+</el-card>
+
+<el-dialog v-model="dialogVisible" :title="dialogTitle" width="500px" @close="handleCloseDialog">
+    <el-form :model="form" label-width="80px">
+        <el-form-item label="用户名">
+            <el-input v-model="form.username" :disabled="isEdit" placeholder="请输入用户名"></el-input>
+        </el-form-item>
+        <el-form-item label="密码" v-if="!isEdit">
+            <el-input v-model="form.password" type="password" placeholder="请输入密码" show-password></el-input>
+        </el-form-item>
+        <el-form-item label="昵称">
+            <el-input v-model="form.nickname" name="form-nickname" autocomplete="off" placeholder="请输入昵称"></el-input>
+        </el-form-item>
+        <el-form-item label="类型" v-if="!isEdit">
+            <el-select v-model="form.type" placeholder="请选择类型">
+                <el-option label="内部用户" :value="0"></el-option>
+                <el-option label="外部用户" :value="1"></el-option>
+            </el-select>
+        </el-form-item>
+        <el-form-item label="角色">
+            <el-select v-model="form.role_ids" multiple placeholder="请选择角色">
+                <el-option v-for="role in roles" :key="role.id" :label="role.name" :value="role.id"></el-option>
+            </el-select>
+        </el-form-item>
+        <el-form-item label="备注">
+            <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="请输入备注" maxlength="500" show-word-limit></el-input>
+        </el-form-item>
+    </el-form>
+    <template #footer>
+        <el-button @click="handleCloseDialog">取消</el-button>
+        <el-button type="primary" @click="handleSubmit">确定</el-button>
+    </template>
+</el-dialog>
+[[end]]
+
+[[define "scripts"]]
+<script>
+(function() {
+// 页面特定的配置（只需要定义当前页面需要的数据和方法）
+// 布局模板会自动合并此配置并挂载应用
+window.pageAppConfig = {
+    data() {
+        return {
+            // 页面特定的数据（会自动与基础配置合并）
+            // 用户信息从 localStorage 获取，不再从模板传递
+            users: [],
+            tableLoading: false,
+            roles: [],
+            dialogVisible: false,
+            isEdit: false,
+            form: {
+                id: null,
+                username: '',
+                password: '',
+                nickname: '',
+                type: 0,
+                remark: '',
+                role_ids: []
+            },
+            dialogTitle: '添加用户',
+            pagination: {
+                page: 1,
+                page_size: 10,
+                total: 0,
+                total_page: 0
+            },
+            filters: {
+                username: '',
+                nickname: '',
+                type: '',
+                role_id: '',
+                status: ''
+            },
+            orderBy: 'id_desc'  // 默认按 id 倒序
+        };
+    },
+    computed: {
+        // 按钮权限控制
+        canAddUser: function() {
+            if (!window.PermissionManager || !window.PermissionManager.initialized) {
+                return false;
+            }
+            return window.PermissionManager.isButtonVisible('/admin/users', 'add');
+        },
+        canEditUser: function() {
+            if (!window.PermissionManager || !window.PermissionManager.initialized) {
+                return false;
+            }
+            return window.PermissionManager.isButtonVisible('/admin/users', 'edit');
+        },
+        canDeleteUser: function() {
+            if (!window.PermissionManager || !window.PermissionManager.initialized) {
+                return false;
+            }
+            return window.PermissionManager.isButtonVisible('/admin/users', 'delete');
+        },
+        canToggleStatus: function() {
+            if (!window.PermissionManager || !window.PermissionManager.initialized) {
+                return false;
+            }
+            return window.PermissionManager.isButtonVisible('/admin/users', 'toggleStatus');
+        },
+        canResetPassword: function() {
+            if (!window.PermissionManager || !window.PermissionManager.initialized) {
+                return false;
+            }
+            return window.PermissionManager.isButtonVisible('/admin/users', 'resetPassword');
+        }
+    },
+    methods: {
+        showMessage(message, type) {
+            if (type === 'success') {
+                ElMessage.success(message);
+            } else if (type === 'error') {
+                ElMessage.error(message);
+            } else {
+                ElMessage.info(message);
+            }
+        },
+        handleAdd() {
+            this.dialogTitle = '添加用户';
+            this.isEdit = false;
+            // 直接赋值属性，避免创建新对象导致响应式问题
+            this.form.id = null;
+            this.form.username = '';
+            this.form.password = '';
+            this.form.nickname = '';
+            this.form.type = 0;
+            this.form.remark = '';
+            this.form.role_ids = [];
+            this.$nextTick(() => {
+                this.dialogVisible = true;
+            });
+        },
+        handleEdit(row) {
+            this.dialogTitle = '编辑用户';
+            this.isEdit = true;
+            // 先重置表单，然后使用 Object.assign 创建新对象，确保与筛选条件完全独立
+            this.form.id = row.id;
+            this.form.username = String(row.username || '');
+            this.form.nickname = String(row.nickname || '');
+            this.form.type = row.type !== undefined ? row.type : 0;
+            this.form.remark = String(row.remark || '');
+            this.form.role_ids = row.roles ? row.roles.map(r => Number(r.id)) : [];
+            this.$nextTick(() => {
+                this.dialogVisible = true;
+            });
+        },
+        handleCloseDialog() {
+            this.dialogVisible = false;
+            // 重置表单数据，避免与筛选条件冲突
+            this.$nextTick(() => {
+                this.form.id = null;
+                this.form.username = '';
+                this.form.password = '';
+                this.form.nickname = '';
+                this.form.type = 0;
+                this.form.remark = '';
+                this.form.role_ids = [];
+            });
+        },
+        handleDelete(row) {
+            ElMessageBox.confirm('确定要删除该用户吗？', '提示', {
+                confirmButtonText: '确定',
+                cancelButtonText: '取消',
+                type: 'warning'
+            }).then(() => {
+                api.users.delete(row.id).then(() => {
+                    this.showMessage('删除成功', 'success');
+                    if (this.users.length === 1 && this.pagination.page > 1) {
+                        this.pagination.page--;
+                    }
+                    this.fetchUsers();
+                }).catch(err => {
+                    var msg = '删除失败';
+                    if (err.response && err.response.data) {
+                        msg = err.response.data.msg || err.response.data.error || msg;
+                    }
+                    this.showMessage(msg, 'error');
+                });
+            }).catch(() => {});
+        },
+        handleToggleStatus(row) {
+            const action = row.status === 1 ? '禁用' : '启用';
+            ElMessageBox.confirm('确定要' + action + '用户 "' + row.username + '" 吗？', '提示', {
+                confirmButtonText: '确定',
+                cancelButtonText: '取消',
+                type: 'warning'
+            }).then(() => {
+                api.users.toggleStatus(row.id).then(() => {
+                    this.showMessage(action + '成功', 'success');
+                    this.fetchUsers();
+                }).catch(err => {
+                    var msg = action + '失败';
+                    if (err.response && err.response.data) {
+                        msg = err.response.data.msg || err.response.data.error || msg;
+                    }
+                    this.showMessage(msg, 'error');
+                });
+            }).catch(() => {});
+        },
+        handleResetPassword(row) {
+            ElMessageBox.confirm('确定要重置用户 "' + row.username + '" 的密码吗？', '提示', {
+                confirmButtonText: '确定',
+                cancelButtonText: '取消',
+                type: 'warning'
+            }).then(() => {
+                api.users.resetPassword(row.id).then(res => {
+                    const newPassword = res.data.password;
+                    // 复制密码到剪贴板
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(newPassword).then(() => {
+                            ElMessageBox.alert('密码重置成功！\n\n新密码：' + newPassword + '\n\n密码已自动复制到剪贴板，请妥善保管。', '提示', {
+                                confirmButtonText: '确定',
+                                type: 'success'
+                            });
+                        }).catch(() => {
+                            // 如果复制失败，使用备用方法
+                            this.fallbackCopyToClipboard(newPassword);
+                            ElMessageBox.alert('密码重置成功！\n\n新密码：' + newPassword + '\n\n请妥善保管，密码将不再显示。', '提示', {
+                                confirmButtonText: '确定',
+                                type: 'success'
+                            });
+                        });
+                    } else {
+                        // 使用备用方法
+                        this.fallbackCopyToClipboard(newPassword);
+                        ElMessageBox.alert('密码重置成功！\n\n新密码：' + newPassword + '\n\n密码已自动复制到剪贴板，请妥善保管。', '提示', {
+                            confirmButtonText: '确定',
+                            type: 'success'
+                        });
+                    }
+                    this.fetchUsers();
+                }).catch(err => {
+                    var msg = '重置密码失败';
+                    if (err.response && err.response.data) {
+                        msg = err.response.data.msg || err.response.data.error || msg;
+                    }
+                    this.showMessage(msg, 'error');
+                });
+            }).catch(() => {});
+        },
+        fallbackCopyToClipboard(text) {
+            // 备用复制方法，兼容旧浏览器
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                document.execCommand('copy');
+            } catch (err) {
+                // 复制失败，忽略错误
+            }
+            document.body.removeChild(textArea);
+        },
+        handleSubmit() {
+            if (!this.form.username && !this.isEdit) {
+                this.showMessage('请输入用户名', 'error');
+                return;
+            }
+            if (!this.form.password && !this.isEdit) {
+                this.showMessage('请输入密码', 'error');
+                return;
+            }
+            if (this.form.password && this.form.password.length < 6) {
+                this.showMessage('密码长度不能少于6位', 'error');
+                return;
+            }
+            
+            const data = this.isEdit ? {
+                nickname: this.form.nickname,
+                remark: this.form.remark,
+                role_ids: this.form.role_ids
+            } : {
+                username: this.form.username,
+                password: this.form.password,
+                nickname: this.form.nickname,
+                type: parseInt(this.form.type),
+                remark: this.form.remark,
+                role_ids: this.form.role_ids
+            };
+
+            const request = this.isEdit ? api.users.update(this.form.id, data) : api.users.create(data);
+            request.then(() => {
+                this.showMessage(this.isEdit ? '更新成功' : '创建成功', 'success');
+                this.handleCloseDialog();
+                if (!this.isEdit) {
+                    this.pagination.page = 1;
+                }
+                this.fetchUsers();
+            }).catch(err => {
+                var msg = '操作失败';
+                if (err.response && err.response.data) {
+                    msg = err.response.data.msg || err.response.data.error || msg;
+                }
+                this.showMessage(msg, 'error');
+            });
+        },
+        fetchUsers() {
+            const params = {
+                page: this.pagination.page,
+                page_size: this.pagination.page_size
+            };
+            
+            // 添加筛选条件
+            if (this.filters.username) {
+                params.username = this.filters.username;
+            }
+            if (this.filters.nickname) {
+                params.nickname = this.filters.nickname;
+            }
+            if (this.filters.type !== '') {
+                params.type = this.filters.type;
+            }
+            if (this.filters.role_id) {
+                params.role_id = this.filters.role_id;
+            }
+            if (this.filters.status !== '') {
+                params.status = this.filters.status;
+            }
+            // 添加排序参数
+            if (this.orderBy) {
+                params.order_by = this.orderBy;
+            }
+            
+            this.tableLoading = true;
+            api.users.getList(params).then(res => {
+                var data = res.data;
+                this.users = data.data || [];
+                if (data.pagination) {
+                    this.pagination = {
+                        page: data.pagination.page,
+                        page_size: data.pagination.page_size,
+                        total: data.pagination.total,
+                        total_page: data.pagination.total_page
+                    };
+                }
+            }).catch(err => {
+                var msg = '获取用户列表失败';
+                if (err.response && err.response.data) {
+                    msg = err.response.data.msg || err.response.data.error || msg;
+                }
+                this.showMessage(msg, 'error');
+            }).finally(() => {
+                this.tableLoading = false;
+            });
+        },
+        handleFilter() {
+            this.pagination.page = 1;
+            this.fetchUsers();
+        },
+        handleResetFilter() {
+            this.filters = {
+                username: '',
+                nickname: '',
+                type: '',
+                role_id: '',
+                status: ''
+            };
+            this.orderBy = 'id_desc';
+            this.pagination.page = 1;
+            this.fetchUsers();
+        },
+        handleSortChange({ column, prop, order }) {
+            if (prop === 'id') {
+                if (order === 'ascending') {
+                    this.orderBy = 'id_asc';
+                } else if (order === 'descending') {
+                    this.orderBy = 'id_desc';
+                } else {
+                    this.orderBy = 'id_desc';  // 默认倒序
+                }
+                this.pagination.page = 1;
+                this.fetchUsers();
+            }
+        },
+        handleSizeChange() {
+            this.pagination.page = 1;
+            this.fetchUsers();
+        },
+        handleCurrentChange(page) {
+            this.pagination.page = page;
+            this.fetchUsers();
+        },
+        fetchRoles() {
+            // 获取所有角色（用于筛选下拉框），设置较大的 page_size
+            api.roles.getList({
+                page: 1,
+                page_size: 1000
+            }).then(res => {
+                var data = res.data;
+                // 检查返回的数据结构
+                if (data && data.data) {
+                    // 新格式：{data: [...], pagination: {...}}
+                    this.roles = data.data || [];
+                } else if (Array.isArray(data)) {
+                    // 旧格式：直接是数组（兼容旧接口）
+                    this.roles = data;
+                } else {
+                    this.roles = [];
+                }
+            }).catch(err => {
+                var msg = '获取角色列表失败';
+                if (err.response && err.response.data) {
+                    msg = err.response.data.msg || err.response.data.error || msg;
+                }
+                this.showMessage(msg, 'error');
+            });
+        },
+        formatDate(dateString) {
+            if (!dateString) return '-';
+            try {
+                const date = new Date(dateString);
+                if (isNaN(date.getTime())) return dateString;
+                
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                const hours = String(date.getHours()).padStart(2, '0');
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+                const seconds = String(date.getSeconds()).padStart(2, '0');
+                
+                return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+            } catch (e) {
+                return dateString;
+            }
+        },
+        // getAvatar 和 handleAvatarError 已经在基础配置中定义，不需要重复定义
+        getTypeName(type) {
+            const types = {
+                0: '内部用户',
+                1: '外部用户'
+            };
+            return types[type] || '未知';
+        },
+        getTypeClass(type) {
+            const classes = {
+                0: 'bg-blue-100 text-blue-700',
+                1: 'bg-purple-100 text-purple-700'
+            };
+            return classes[type] || 'bg-slate-100 text-slate-700';
+        },
+        getStatusName(status) {
+            const statuses = {
+                0: '禁用',
+                1: '启用'
+            };
+            return statuses[status] || '未知';
+        },
+        getStatusClass(status) {
+            const classes = {
+                0: 'bg-red-100 text-red-700',
+                1: 'bg-green-100 text-green-700'
+            };
+            return classes[status] || 'bg-slate-100 text-slate-700';
+        },
+        // 注意：navigate, closeUserMenu, getUserAvatar, getUserNickname, getUserUsername, 
+        // getUserRoles, handleLogout 等方法已经在基础配置中定义，不需要重复定义
+    },
+    mounted() {
+        this.fetchUsers();
+        this.fetchRoles();
+    }
+};
+})();
+</script>
+[[end]]
+
+[[define "admin/users.html"]]
+[[template "layouts/admin.html" .]]
+[[end]]

@@ -1,0 +1,601 @@
+[[define "layouts/admin.html"]]
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>[[if .PageTitle]][[.PageTitle]][[else]]后台管理系统[[end]]</title>
+    <!-- Element Plus CSS -->
+    <link rel="stylesheet" href="/static/css/element-plus.css">
+    <!-- Vue.js 3 -->
+    <script src="/static/lib/vue.global.js"></script>
+    <!-- Element Plus JS -->
+    <script src="/static/lib/element-plus.full.js"></script>
+    <!-- Element Plus Icons -->
+    <script src="/static/lib/element-plus-icons.js"></script>
+    <!-- Axios -->
+    <script src="/static/lib/axios.min.js"></script>
+    <!-- 通用工具函数 -->
+    <script src="/static/js/main.js"></script>
+    <!-- API 请求封装 -->
+    <script src="/static/js/api.js"></script>
+    <!-- 权限管理模块 -->
+    <script src="/static/js/permission.js"></script>
+    <style>
+        /* 使用 v-cloak 隐藏未编译的 Vue 模板 */
+        [v-cloak] {
+            display: none !important;
+        }
+        
+        /* Loading 遮罩层样式 */
+        #app-loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        
+        #app-loading.hidden {
+            display: none;
+        }
+        
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #f3f4f6;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+        
+        .loading-text {
+            margin-top: 16px;
+            color: #6b7280;
+            font-size: 14px;
+        }
+        
+        /* Element UI 布局基础样式 */
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+        }
+        #app {
+            height: 100vh;
+        }
+        .el-container {
+            height: 100%;
+        }
+        .el-aside {
+            background: linear-gradient(to bottom, #1e293b, #0f172a);
+            color: white;
+        }
+        #sidebar .el-menu {
+            border-right: none;
+            padding: 0;
+        }
+        #sidebar .el-menu-item {
+            padding-left: 25px !important;
+        }
+        .el-header {
+            background: white;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px 0 16px;
+        }
+        .el-main {
+            background: #f5f7fa;
+            padding: 32px;
+        }
+        /* 侧边栏头部样式 */
+        .sidebar-header {
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .sidebar-header .el-button {
+            color: white;
+        }
+        /* Header 内容布局 */
+        .header-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #1e293b;
+        }
+        .header-user {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .header-avatar {
+            flex-shrink: 0;
+            margin-right: 8px;
+        }
+        .header-nickname {
+            color: #475569;
+            font-size: 14px;
+            font-weight: 500;
+            white-space: nowrap;
+            margin: 0 8px;
+        }
+        .header-arrow {
+            flex-shrink: 0;
+            margin-left: 4px;
+        }
+        /* 下拉菜单用户信息样式 */
+        .user-info-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid #f1f5f9;
+            min-width: 200px;
+        }
+        .user-info-username {
+            font-size: 14px;
+            font-weight: 500;
+            color: #1e293b;
+            margin-bottom: 8px;
+        }
+        .user-info-roles {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-top: 4px;
+        }
+        .user-info-no-roles {
+            margin-top: 4px;
+        }
+        /* 卡片头部布局 */
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+        /* 筛选表单样式 */
+        .el-form--inline .el-form-item {
+            margin-right: 16px;
+        }
+        .el-form--inline .el-form-item .el-select {
+            width: 160px;
+        }
+        .el-form--inline .el-form-item .el-select .el-input__wrapper {
+            width: 100%;
+        }
+        .el-form--inline .el-form-item .el-input {
+            width: 160px;
+        }
+        /* 自定义滚动条样式 */
+        /* ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        } */
+        /* 侧边栏折叠按钮悬停效果 */
+        #sidebar .el-button:hover {
+            background-color: rgba(255, 255, 255, 0.1) !important;
+        }
+        #sidebar .el-button:hover .el-icon {
+            color: white;
+        }
+        /* Element Plus 全局圆角样式 */
+        /* .el-button {
+            border-radius: 8px !important;
+        }
+        .el-input__wrapper {
+            border-radius: 8px !important;
+        }
+        .el-card {
+            border-radius: 12px !important;
+        }
+        .el-card__header {
+            border-radius: 12px 12px 0 0 !important;
+        }
+        .el-card__body {
+            border-radius: 0 0 12px 12px !important;
+        }
+        .el-select .el-input__wrapper {
+            border-radius: 8px !important;
+        }
+        .el-dropdown-menu {
+            border-radius: 8px !important;
+        }
+        .el-menu-item {
+            border-radius: 8px !important;
+        }
+        .el-dialog {
+            border-radius: 12px !important;
+        }
+        .el-dialog__header {
+            border-radius: 12px 12px 0 0 !important;
+        }
+        .el-dialog__body {
+            border-radius: 0 0 12px 12px !important;
+        }
+        .el-table {
+            border-radius: 8px !important;
+            overflow: hidden;
+        } */
+        /* 统一设置表格标题字体黑色粗体 */
+        .el-table th,
+        .el-table__header th,
+        .el-table thead th {
+            color: #000000 !important;
+            font-weight: bold !important;
+        }
+        /* 隐藏表格的竖线分割 */
+        .el-table td,
+        .el-table th,
+        .el-table--border td,
+        .el-table--border th {
+            border-right: none !important;
+        }
+        .el-pagination {
+            border-radius: 8px !important;
+        }
+        .el-pagination button {
+            border-radius: 50% !important;
+        }
+        .el-pagination .el-pager li {
+            border-radius: 50% !important;
+        }
+        .el-tag {
+            border-radius: 6px !important;
+        }
+        .el-avatar {
+            border-radius: 50% !important;
+        }
+        .el-badge__content {
+            border-radius: 10px !important;
+        }
+        .el-message {
+            border-radius: 8px !important;
+        }
+        .el-message-box {
+            border-radius: 12px !important;
+        }
+        .el-notification {
+            border-radius: 8px !important;
+        }
+        .el-tree-node__content {
+            border-radius: 6px !important;
+        }
+        .el-checkbox {
+            border-radius: 4px !important;
+        }
+        .el-radio {
+            border-radius: 50% !important;
+        }
+        .el-switch {
+            border-radius: 20px !important;
+        }
+        .el-slider__button {
+            border-radius: 50% !important;
+        }
+        .el-date-editor .el-input__wrapper {
+            border-radius: 8px !important;
+        }
+        .el-time-picker .el-input__wrapper {
+            border-radius: 8px !important;
+        }
+        .el-upload {
+            border-radius: 8px !important;
+        }
+        .el-upload-dragger {
+            border-radius: 8px !important;
+        }
+    </style>
+    [[block "head" .]][[end]]
+</head>
+<body>
+<script>
+// 全局用户菜单数据
+// 只从 localStorage 读取用户信息
+(function() {
+    var cachedUser = localStorage.getItem('user');
+    var userMenuData = {
+        avatar: '',
+        nickname: '',
+        username: '',
+        roles: []
+    };
+    
+    if (cachedUser) {
+        try {
+            var parsed = JSON.parse(cachedUser);
+            if (parsed && parsed.username) {
+                userMenuData = {
+                    avatar: parsed.avatar || '',
+                    nickname: parsed.nickname || parsed.username || '',
+                    username: parsed.username || '',
+                    roles: parsed.roles || []
+                };
+            }
+        } catch (e) {
+            // 解析失败，使用默认值
+        }
+    }
+    
+    window.userMenuData = userMenuData;
+})();
+</script>
+<!-- Loading 遮罩层 -->
+<div id="app-loading">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">加载中...</div>
+</div>
+<div id="app" v-cloak>
+    <el-container>
+        <el-aside :width="sidebarCollapsed ? '64px' : '260px'" id="sidebar">
+            <el-menu
+                :default-active="activeMenu"
+                background-color="transparent"
+                text-color="rgba(255,255,255,0.7)"
+                active-text-color="#60a5fa"
+                :collapse="sidebarCollapsed"
+               >
+                <el-menu-item 
+                    v-for="menu in visibleMenus" 
+                    :key="menu.path"
+                    :index="menu.path" 
+                    @click="navigate(menu.path)">
+                    <el-icon><component :is="menu.icon" /></el-icon>
+                    <span>{{ menu.name }}</span>
+                </el-menu-item>
+            </el-menu>
+        </el-aside>
+        <el-container>
+            <el-header>
+                <div style="display: flex; align-items: center; gap: 16px;">
+                    <el-button text @click="toggleSidebar" style="color: #1e293b !important; font-size: 20px; padding: 8px; min-width: 40px; margin-left: -8px;">
+                        <el-icon v-if="!sidebarCollapsed" style="font-size: 20px; color: #1e293b !important;"><Fold /></el-icon>
+                        <el-icon v-else style="font-size: 20px; color: #1e293b !important;"><Expand /></el-icon>
+                    </el-button>
+                    <div class="header-title">[[if .PageTitle]][[.PageTitle]][[else]]后台管理系统[[end]]</div>
+                </div>
+                <el-dropdown @command="handleUserMenuCommand" trigger="click" @visible-change="handleDropdownVisibleChange">
+                    <el-button text class="header-user">
+                        <el-avatar :src="getUserAvatar()" :size="32" @error="handleAvatarError" class="header-avatar">
+                            <img src="data:image/svg+xml;utf8,<svg width='40' height='40' viewBox='0 0 40 40' fill='none' xmlns='http://www.w3.org/2000/svg'><circle cx='20' cy='20' r='20' fill='%23e5e7eb'/><circle cx='20' cy='15' r='6' fill='%239ca3af'/><path d='M10 30C10 25 14 23 20 23C26 23 30 25 30 30V32H10V30Z' fill='%239ca3af'/></svg>" />
+                        </el-avatar>
+                        <span class="header-nickname">{{getUserNickname()}}</span>
+                        <el-icon class="header-arrow"><ArrowDown /></el-icon>
+                    </el-button>
+                    <template #dropdown>
+                        <el-dropdown-menu>
+                            <div class="user-info-header">
+                                <div class="user-info-username">{{getUserUsername()}}</div>
+                                <div class="user-info-roles" v-if="getUserRoles().length > 0">
+                                    <el-tag v-for="role in getUserRoles()" :key="'role-' + (role.id || role.ID)" size="small" type="info" style="margin-right: 4px; margin-top: 4px;">
+                                        {{role.name || role.Name || '未知角色'}}
+                                    </el-tag>
+                                </div>
+                                <div class="user-info-no-roles" v-else>
+                                    <span style="font-size: 12px; color: #909399;">暂无角色</span>
+                                </div>
+                            </div>
+                            <el-dropdown-item command="avatar">
+                                <el-icon><UserFilled /></el-icon>
+                                <span>更换头像</span>
+                            </el-dropdown-item>
+                            <el-dropdown-item command="password">
+                                <el-icon><Key /></el-icon>
+                                <span>修改密码</span>
+                            </el-dropdown-item>
+                            <el-dropdown-item command="logout" divided>
+                                <el-icon><SwitchButton /></el-icon>
+                                <span>退出登录</span>
+                            </el-dropdown-item>
+                        </el-dropdown-menu>
+                    </template>
+                </el-dropdown>
+            </el-header>
+            <el-main>
+                [[template "content" .]]
+            </el-main>
+        </el-container>
+    </el-container>
+</div>
+<script>
+// 确保 Element Plus 全局组件可用
+// Element Plus 通过 CDN 加载后，会将组件挂载到 window.ElementPlus
+// 由于脚本是按顺序执行的，此时 Element Plus 应该已经加载完成
+(function() {
+    // 等待 Element Plus 加载完成
+    function setupGlobals() {
+        if (typeof ElementPlus !== 'undefined') {
+            // Element Plus 的 UMD 构建将组件导出在 ElementPlus 对象上
+            // 将常用的组件挂载到 window 对象，方便在 pageAppConfig 中使用
+            if (ElementPlus.ElMessage && !window.ElMessage) {
+                window.ElMessage = ElementPlus.ElMessage;
+            }
+            if (ElementPlus.ElMessageBox && !window.ElMessageBox) {
+                window.ElMessageBox = ElementPlus.ElMessageBox;
+            }
+            if (ElementPlus.ElNotification && !window.ElNotification) {
+                window.ElNotification = ElementPlus.ElNotification;
+            }
+        } else {
+            // 如果还没加载，延迟重试（最多重试10次）
+            if (typeof setupGlobals.retryCount === 'undefined') {
+                setupGlobals.retryCount = 0;
+            }
+            if (setupGlobals.retryCount < 10) {
+                setupGlobals.retryCount++;
+                setTimeout(setupGlobals, 50);
+            }
+        }
+    }
+    setupGlobals();
+})();
+
+// 注册 Element Plus 图标的辅助函数
+// 必须在页面脚本执行前定义，以便子页面可以使用
+window.registerElementPlusIcons = function(app) {
+    // HTML 内置元素和保留字列表（Vue 不允许使用这些名称作为组件 ID）
+    const reservedNames = new Set([
+        'html', 'body', 'base', 'head', 'link', 'meta', 'style', 'title',
+        'address', 'article', 'area', 'aside', 'footer', 'header',
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hgroup', 'nav', 'section',
+        'div', 'dd', 'dl', 'dt', 'figcaption', 'figure', 'hr', 'img', 'li',
+        'main', 'ol', 'p', 'pre', 'ul', 'a', 'b', 'abbr', 'bdi', 'bdo', 'br',
+        'cite', 'code', 'data', 'dfn', 'em', 'i', 'kbd', 'mark', 'q', 'rp',
+        'rt', 'rtc', 'ruby', 's', 'samp', 'small', 'span', 'strong', 'sub',
+        'sup', 'time', 'u', 'var', 'wbr', 'audio', 'map', 'track', 'video',
+        'embed', 'object', 'param', 'source', 'canvas', 'script', 'noscript',
+        'del', 'ins', 'caption', 'col', 'colgroup', 'table', 'tbody', 'td',
+        'tfoot', 'th', 'thead', 'tr', 'button', 'datalist', 'fieldset', 'form',
+        'input', 'label', 'legend', 'meter', 'optgroup', 'option', 'output',
+        'progress', 'select', 'textarea', 'details', 'dialog', 'menu', 'summary',
+        'slot', 'template', 'filter', 'switch', 'view', 'picture'
+    ]);
+    
+    // 检查名称是否是保留字
+    function isReservedName(name) {
+        return reservedNames.has(name.toLowerCase());
+    }
+    
+    // Element Plus Icons Vue IIFE 版本会导出 ElementPlusIconsVue 全局变量
+    let icons = null;
+    
+    // 尝试多种可能的导出方式
+    if (typeof ElementPlusIconsVue !== 'undefined') {
+        icons = ElementPlusIconsVue;
+    } else if (typeof window.ElementPlusIconsVue !== 'undefined') {
+        icons = window.ElementPlusIconsVue;
+    }
+    
+    if (icons && typeof icons === 'object') {
+        const iconKeys = Object.keys(icons);
+        
+        // 遍历所有图标并注册为全局组件
+        iconKeys.forEach(key => {
+            const component = icons[key];
+            if (component && (typeof component === 'object' || typeof component === 'function')) {
+                try {
+                    // 注册原始名称（PascalCase，如 ArrowLeft）
+                    // 只有当原始名称不是保留字时才注册
+                    if (!isReservedName(key)) {
+                        app.component(key, component);
+                    }
+                    
+                    // Vue 3 在解析组件时会进行大小写转换
+                    // <ArrowLeft /> 会被解析为 'arrowleft'（全小写）
+                    // 所以需要注册全小写版本，但要跳过保留字
+                    const lowerKey = key.toLowerCase();
+                    if (lowerKey !== key && !isReservedName(lowerKey)) {
+                        app.component(lowerKey, component);
+                    }
+                    
+                    // 同时注册 kebab-case 版本（以防万一），但要跳过保留字
+                    const kebabKey = key.replace(/([A-Z])/g, '-$1').toLowerCase();
+                    if (kebabKey !== key.toLowerCase() && kebabKey !== key && !isReservedName(kebabKey)) {
+                        app.component(kebabKey, component);
+                    }
+                } catch (e) {
+                    // 忽略注册失败的图标
+                }
+            }
+        });
+    }
+};
+</script>
+[[template "scripts" .]]
+<!-- 统一在布局模板中挂载 Vue 应用 -->
+<script>
+// 等待子页面脚本执行完成后再挂载应用
+// 同时等待权限初始化完成，确保菜单能正确显示
+(function() {
+    function mountApp() {
+        const { createApp } = Vue;
+        const baseConfig = window.createBaseAppConfig();
+        
+        // 合并页面配置（如果存在）
+        let mergedConfig = baseConfig;
+        if (typeof window.pageAppConfig !== 'undefined') {
+            mergedConfig = window.mergeAppConfig(baseConfig, window.pageAppConfig);
+        }
+        
+        // 创建并配置应用
+        const app = createApp(mergedConfig);
+        app.use(ElementPlus);
+        
+        // 注册图标
+        if (typeof window.registerElementPlusIcons === 'function') {
+            window.registerElementPlusIcons(app);
+        }
+        
+        // 安全挂载应用
+        let vueApp = null;
+        if (typeof window.safeMountApp === 'function') {
+            vueApp = window.safeMountApp(app, '#app');
+        } else {
+            vueApp = app.mount('#app');
+        }
+        
+        // Vue 挂载后隐藏 loading
+        const loadingElement = document.getElementById('app-loading');
+        if (loadingElement) {
+            loadingElement.classList.add('hidden');
+        }
+        
+        return vueApp;
+    }
+    
+    // 等待权限初始化完成后再挂载应用
+    if (window.PermissionManager) {
+        window.PermissionManager.initPermissions().then(function() {
+            const vueApp = mountApp();
+            // 权限已初始化，更新响应式状态
+            if (vueApp) {
+                vueApp.permissionsReady = true;
+                vueApp.isSuperAdmin = window.PermissionManager.isSuperAdmin;
+                console.log('权限状态已更新到 Vue:', {
+                    permissionsReady: vueApp.permissionsReady,
+                    isSuperAdmin: vueApp.isSuperAdmin,
+                    permissionManagerIsSuperAdmin: window.PermissionManager.isSuperAdmin
+                });
+            }
+        }).catch(function() {
+            // 即使权限初始化失败，也挂载应用（至少显示首页）
+            console.warn('权限初始化失败，使用默认菜单');
+            mountApp();
+        });
+    } else {
+        // 如果权限管理器不存在，直接挂载（不应该发生，但作为降级方案）
+        console.warn('权限管理器不存在，直接挂载应用');
+        mountApp();
+    }
+})();
+</script>
+</body>
+</html>
+[[end]]

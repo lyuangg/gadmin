@@ -1,0 +1,29 @@
+[[define "content"]]
+<el-card shadow="never">
+    <h2>欢迎使用后台管理系统</h2>
+    <p>请从左侧菜单选择要管理的功能模块。</p>
+</el-card>
+[[end]]
+
+[[define "scripts"]]
+<script>
+// 页面特定的配置（只需要定义当前页面需要的数据和方法）
+// 布局模板会自动合并此配置并挂载应用
+window.pageAppConfig = {
+    data() {
+        return {
+            // 页面特定的数据（会自动与基础配置合并）
+            // 用户信息从 localStorage 获取，不再从模板传递
+        };
+    }
+    // 如果需要添加页面特定的方法，可以在这里定义
+    // methods: {
+    //     pageSpecificMethod() { ... }
+    // }
+};
+</script>
+[[end]]
+
+[[define "admin/index.html"]]
+[[template "layouts/admin.html" .]]
+[[end]]

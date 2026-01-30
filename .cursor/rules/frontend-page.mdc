@@ -1,0 +1,94 @@
+---
+description: gadmin 前端页面规范（模板、Vue、API、权限）
+globs: "**/templates/**/*.html,**/static/js/**/*.js"
+alwaysApply: false
+---
+
+# gadmin 前端页面规范
+
+本规则适用于 `templates/` 下所有 HTML 模板及 `static/js/` 下前端脚本，约束结构、模板语法、Vue 用法、API 调用与权限控制。
+
+## 模板与布局
+
+### 模板语法
+
+- 使用 Go 模板分隔符 **`[[` 与 `]]`**（非 `{{`）。
+- 管理后台页面通过 **layout** 拼装：每个页面定义 `content` 与 `scripts`，由 `layouts/admin.html` 通过 `[[template "content" .]]`、`[[template "scripts" .]]` 引入。
+
+### 管理后台页面结构
+
+每个列表/管理页（如 `admin/users.html`）需包含两块：
+
+1. **`[[define "content"]]`**：主内容区  
+   - 整体用 `<el-card shadow="never">` 包一层。  
+   - 卡片头部：`<template #header>` 内用 `class="card-header"`，标题用 `class="card-title"`，右侧操作按钮用 `v-if="canXxx"` 控制。  
+   - 筛选区：`<el-form :inline="true" :model="filters">`，筛选项、筛一下、重置。  
+   - 列表：`<el-table :data="xxx" border stripe>`，排序列用 `sortable="custom"` 并实现 `@sort-change`。  
+   - 分页：用 `[[template "components/pagination" .]]`，依赖页面 data 中的 `pagination` 以及 `handleSizeChange`、`handleCurrentChange`。  
+   - 弹窗：`<el-dialog v-model="dialogVisible">` 内为表单，footer 放取消/确定，用 `handleCloseDialog`、`handleSubmit` 等。
+
+2. **`[[define "scripts"]]`**：页面脚本  
+   - 使用 IIFE，向外暴露 **`window.pageAppConfig`**，包含 `data()`、`computed`、`methods`。  
+   - 布局会与 `createBaseAppConfig()` 合并后挂载，因此只写当前页用到的状态和方法。
+
+### 独立页（如登录）
+
+- 登录等独立页使用 `[[define "auth/login.html"]]` 等完整 HTML，自带 `<head>`、资源引用和页面内脚本，不依赖 admin layout。
+
+## Vue 与数据
+
+### 数据与命名
+
+- 列表数据、弹窗显隐、是否编辑模式、表单对象、分页对象、筛选条件等，均放在 `data()` 中，命名与接口字段一致（如 `page`、`page_size`、`total`、`filters`）。  
+- 分页统一用对象：`pagination: { page, page_size, total, total_page }`，与后端和 `components/pagination` 约定一致。
+
+### 权限与按钮
+
+- 按钮是否展示通过 **computed** 判断，例如 `canAddUser`、`canEditUser`、`canDeleteUser`。  
+- 实现方式：`window.PermissionManager.isButtonVisible(pagePath, buttonKey)`。  
+- 先判断 `window.PermissionManager && window.PermissionManager.initialized`，未初始化时返回 `false`。  
+- `pagePath` 为当前页路径（如 `'/admin/users'`），`buttonKey` 与 `permission.js` 里 `buttonPermissions` 的 key 一致（如 `'add'`、`'edit'`、`'delete'`）。
+
+### 消息与确认
+
+- 成功/失败提示用 **ElMessage**：`ElMessage.success(msg)`、`ElMessage.error(msg)`。  
+- 删除等操作前用 **ElMessageBox.confirm**，确认后再调 API。  
+- 可在 `methods` 里封装 `showMessage(message, type)` 供本页复用。
+
+## API 与请求
+
+### 调用方式
+
+- 所有请求通过 **`api`** 全局对象（见 `static/js/api.js`）发起，如 `api.users.getList(params)`、`api.users.delete(id)`。  
+- 不要直接写 `axios.get/post`，以保证鉴权、错误码（401/403）由 api 层统一处理。
+
+### 错误处理
+
+- 接口返回非 0 或 HTTP 错误时，api 层已统一弹出提示或跳转登录；页面内可在 `.catch()` 里用 `err.response?.data?.msg` 做二次提示，文案应对用户友好。  
+- 401 由 api 层处理跳转登录；页面只需在 catch 里处理业务提示即可。
+
+## 列表页通用模式
+
+- **拉取列表**：在 `methods` 里实现 `fetchXxx()`，内部用 `api.xxx.getList({ page, page_size, ...filters, order_by })`，然后赋值到 `this.xxx` 和 `this.pagination`。  
+- **筛选/排序**：`handleFilter`、`handleResetFilter`、`handleSortChange`，最后都调用一次 `fetchXxx()`。  
+- **分页**：`handleSizeChange`、`handleCurrentChange` 里改 `pagination.page` 或 `page_size`，再 `fetchXxx()`。  
+- **增删改**：`handleAdd` 重置表单并打开弹窗；`handleEdit(row)` 把 row 填进 form 再打开弹窗；`handleSubmit` 里根据是否有 id 调 create/update；删除在确认后调 `api.xxx.delete(id)`，再刷新列表。
+
+## 表单与弹窗
+
+- 弹窗内表单用 `:model="form"`，表单项用 `v-model="form.xxx"`。  
+- 编辑时避免直接把 row 赋给 form（会引用同一对象），应对 form 按字段赋值或浅拷贝。  
+- 关闭弹窗时在 `handleCloseDialog` 里重置 form，避免和筛选区的数据串在一起。
+
+## 资源与依赖
+
+- 布局已统一引入：Vue 3、Element Plus、Axios、`main.js`、`api.js`、`permission.js`。  
+- 页面脚本中可直接使用 `api`、`getToken`、`ElMessage`、`ElMessageBox`、`window.PermissionManager` 等全局对象。  
+- 新增业务 API 应在 `api.js` 中按模块挂到 `api` 下（如 `api.users`、`api.roles`），并在 `permission.js` 的 `menuPermissions`/`buttonPermissions` 中补充对应 path/method 与按钮 key。
+
+## 小结
+
+- 模板用 `[[ ]]`，管理后台页只写 `content` + `scripts`，列表页用 el-card + 筛表 + 分页组件 + 弹窗。  
+- 权限用 `PermissionManager.isButtonVisible(pagePath, buttonKey)` 与 computed 控制按钮。  
+- 请求只用 `api.*`，错误以用户可读文案在页面或 api 层展示。  
+- 新页面、新按钮需在 `api.js` 与 `permission.js` 中补全接口与权限配置。

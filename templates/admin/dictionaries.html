@@ -1,0 +1,422 @@
+[[define "content"]]
+<el-card shadow="never">
+    <template #header>
+        <div class="card-header">
+            <span class="card-title">字典管理</span>
+            <el-button v-if="canAddType" type="primary" @click="handleAddType">
+                <el-icon><Plus /></el-icon>
+                <span>添加类型</span>
+            </el-button>
+        </div>
+    </template>
+
+    <div style="margin-bottom: 16px; display: flex; gap: 12px; flex-wrap: wrap;">
+        <el-input v-model="typeFilters.code" placeholder="类型编码" clearable style="width: 160px;" @clear="loadTypes" @keyup.enter="loadTypes"></el-input>
+        <el-input v-model="typeFilters.name" placeholder="类型名称" clearable style="width: 160px;" @clear="loadTypes" @keyup.enter="loadTypes"></el-input>
+        <el-button type="primary" @click="loadTypes">查询</el-button>
+    </div>
+    <el-table :data="types" border stripe :loading="typeTableLoading" @sort-change="handleTypeSortChange">
+        <el-table-column prop="id" label="ID" width="80" sortable="custom"></el-table-column>
+        <el-table-column prop="code" label="类型编码"></el-table-column>
+        <el-table-column prop="name" label="类型名称"></el-table-column>
+        <el-table-column prop="remark" label="备注">
+            <template #default="{ row }">
+                {{ row.remark || '-' }}
+            </template>
+        </el-table-column>
+        <el-table-column label="操作" width="280" fixed="right">
+            <template #default="{ row }">
+                <el-button size="small" type="primary" link @click="openItemsDrawer(row)">字典项</el-button>
+                <el-button v-if="canEditType" size="small" @click="handleEditType(row)">编辑</el-button>
+                <el-button v-if="canDeleteType" size="small" type="danger" @click="handleDeleteType(row)">删除</el-button>
+            </template>
+        </el-table-column>
+    </el-table>
+    <div style="margin-top: 24px; display: flex; justify-content: center;">
+        <el-pagination
+            v-model:current-page="typePagination.page"
+            v-model:page-size="typePagination.page_size"
+            :page-sizes="[10, 20, 50, 100]"
+            :total="typePagination.total"
+            layout="first, prev, pager, next, last, total, sizes"
+            @size-change="function() { typePagination.page = 1; loadTypes(); }"
+            @current-change="loadTypes"
+            size="small"
+            background
+        />
+    </div>
+</el-card>
+
+<!-- 字典项抽屉：从类型行「字典项」打开 -->
+<el-drawer
+    v-model="itemsDrawerVisible"
+    :title="itemsDrawerTitle"
+    direction="rtl"
+    size="720px"
+    @close="itemsDrawerVisible = false"
+>
+    <div v-if="currentType" style="padding: 0 8px;">
+        <div style="margin-bottom: 16px;">
+            <el-button v-if="canAddItem" type="primary" size="small" @click="handleAddItem">
+                <el-icon><Plus /></el-icon>
+                <span>添加字典项</span>
+            </el-button>
+        </div>
+        <el-table :data="items" border stripe :loading="itemTableLoading" size="small">
+            <el-table-column prop="id" label="ID" width="70"></el-table-column>
+            <el-table-column prop="label" label="显示文本"></el-table-column>
+            <el-table-column prop="value" label="值" width="90"></el-table-column>
+            <el-table-column prop="sort" label="排序" width="70"></el-table-column>
+            <el-table-column prop="status" label="状态" width="72">
+                <template #default="{ row }">
+                    <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small">{{ row.status === 1 ? '启用' : '禁用' }}</el-tag>
+                </template>
+            </el-table-column>
+            <el-table-column label="操作" width="140" fixed="right">
+                <template #default="{ row }">
+                    <el-button v-if="canEditItem" size="small" type="primary" link @click="handleEditItem(row)">编辑</el-button>
+                    <el-button v-if="canDeleteItem" size="small" type="primary" link @click="handleDeleteItem(row)">删除</el-button>
+                </template>
+            </el-table-column>
+        </el-table>
+        <div style="margin-top: 16px; display: flex; justify-content: center;">
+            <el-pagination
+                v-model:current-page="itemPagination.page"
+                v-model:page-size="itemPagination.page_size"
+                :page-sizes="[10, 20, 50]"
+                :total="itemPagination.total"
+                layout="prev, pager, next, total, sizes"
+                @size-change="function() { itemPagination.page = 1; loadItems(); }"
+                @current-change="loadItems"
+                size="small"
+                background
+            />
+        </div>
+    </div>
+</el-drawer>
+
+<!-- 字典类型 弹窗 -->
+<el-dialog v-model="typeDialogVisible" :title="typeDialogTitle" width="500px" @close="typeDialogVisible = false">
+    <el-form :model="typeForm" label-width="90px">
+        <el-form-item label="类型编码">
+            <el-input v-model="typeForm.code" placeholder="如 user_status"></el-input>
+        </el-form-item>
+        <el-form-item label="类型名称">
+            <el-input v-model="typeForm.name" placeholder="如 用户状态"></el-input>
+        </el-form-item>
+        <el-form-item label="备注">
+            <el-input v-model="typeForm.remark" type="textarea" :rows="2" placeholder="选填"></el-input>
+        </el-form-item>
+    </el-form>
+    <template #footer>
+        <el-button @click="typeDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleTypeSubmit">确定</el-button>
+    </template>
+</el-dialog>
+
+<!-- 字典项 弹窗（从抽屉内添加/编辑） -->
+<el-dialog v-model="itemDialogVisible" :title="itemDialogTitle" width="500px" @close="itemDialogVisible = false">
+    <el-form :model="itemForm" label-width="90px">
+        <el-form-item label="显示文本">
+            <el-input v-model="itemForm.label" placeholder="如 启用"></el-input>
+        </el-form-item>
+        <el-form-item label="值">
+            <el-input v-model="itemForm.value" placeholder="如 1"></el-input>
+        </el-form-item>
+        <el-form-item label="排序">
+            <el-input-number v-model="itemForm.sort" :min="0" placeholder="数值越小越靠前"></el-input-number>
+        </el-form-item>
+        <el-form-item label="状态">
+            <el-radio-group v-model="itemForm.status">
+                <el-radio :label="1">启用</el-radio>
+                <el-radio :label="0">禁用</el-radio>
+            </el-radio-group>
+        </el-form-item>
+        <el-form-item label="备注">
+            <el-input v-model="itemForm.remark" type="textarea" :rows="2" placeholder="选填"></el-input>
+        </el-form-item>
+    </el-form>
+    <template #footer>
+        <el-button @click="itemDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleItemSubmit">确定</el-button>
+    </template>
+</el-dialog>
+[[end]]
+
+[[define "scripts"]]
+<script>
+(function() {
+window.pageAppConfig = {
+    data() {
+        return {
+            types: [],
+            typeTableLoading: false,
+            typeFilters: { code: '', name: '' },
+            typePagination: { page: 1, page_size: 10, total: 0, total_page: 0 },
+            typeOrderBy: 'id_desc',
+            typeDialogVisible: false,
+            typeDialogTitle: '添加字典类型',
+            typeForm: { id: null, code: '', name: '', remark: '' },
+            isTypeEdit: false,
+
+            itemsDrawerVisible: false,
+            currentType: null,
+            selectedTypeId: null,
+            items: [],
+            itemTableLoading: false,
+            itemPagination: { page: 1, page_size: 10, total: 0, total_page: 0 },
+            itemDialogVisible: false,
+            itemDialogTitle: '添加字典项',
+            itemForm: { id: null, type_id: null, label: '', value: '', sort: 0, status: 1, remark: '' },
+            isItemEdit: false
+        };
+    },
+    computed: {
+        itemsDrawerTitle: function() {
+            if (!this.currentType) return '字典项';
+            return '字典项 - ' + this.currentType.name + ' (' + this.currentType.code + ')';
+        },
+        canAddType: function() {
+            return window.PermissionManager && window.PermissionManager.initialized && window.PermissionManager.isButtonVisible('/admin/dictionaries', 'add');
+        },
+        canEditType: function() {
+            return window.PermissionManager && window.PermissionManager.initialized && window.PermissionManager.isButtonVisible('/admin/dictionaries', 'edit');
+        },
+        canDeleteType: function() {
+            return window.PermissionManager && window.PermissionManager.initialized && window.PermissionManager.isButtonVisible('/admin/dictionaries', 'delete');
+        },
+        canAddItem: function() {
+            return window.PermissionManager && window.PermissionManager.initialized && window.PermissionManager.isButtonVisible('/admin/dictionaries', 'addItem');
+        },
+        canEditItem: function() {
+            return window.PermissionManager && window.PermissionManager.initialized && window.PermissionManager.isButtonVisible('/admin/dictionaries', 'editItem');
+        },
+        canDeleteItem: function() {
+            return window.PermissionManager && window.PermissionManager.initialized && window.PermissionManager.isButtonVisible('/admin/dictionaries', 'deleteItem');
+        }
+    },
+    methods: {
+        showMessage(msg, type) {
+            if (type === 'success') ElMessage.success(msg);
+            else if (type === 'error') ElMessage.error(msg);
+            else ElMessage.info(msg);
+        },
+        loadTypes() {
+            this.typeTableLoading = true;
+            var params = {
+                page: this.typePagination.page,
+                page_size: this.typePagination.page_size,
+                order_by: this.typeOrderBy
+            };
+            if (this.typeFilters.code) params.code = this.typeFilters.code;
+            if (this.typeFilters.name) params.name = this.typeFilters.name;
+            api.dictionaries.getTypes(params).then(res => {
+                var data = res.data;
+                if (data && data.data) {
+                    this.types = data.data;
+                    if (data.pagination) {
+                        this.typePagination = {
+                            page: data.pagination.page,
+                            page_size: data.pagination.page_size,
+                            total: data.pagination.total,
+                            total_page: data.pagination.total_page
+                        };
+                    }
+                } else {
+                    this.types = [];
+                }
+            }).catch(err => {
+                this.showMessage((err.response && err.response.data && err.response.data.msg) || '加载字典类型失败', 'error');
+            }).finally(() => {
+                this.typeTableLoading = false;
+            });
+        },
+        openItemsDrawer(row) {
+            this.currentType = row;
+            this.selectedTypeId = row.id;
+            this.itemPagination.page = 1;
+            this.itemsDrawerVisible = true;
+            this.loadItems();
+        },
+        handleTypeSortChange({ prop, order }) {
+            if (prop === 'id') {
+                this.typeOrderBy = order === 'ascending' ? 'id_asc' : 'id_desc';
+                this.typePagination.page = 1;
+                this.loadTypes();
+            }
+        },
+        handleAddType() {
+            this.typeDialogTitle = '添加字典类型';
+            this.isTypeEdit = false;
+            this.typeForm = { id: null, code: '', name: '', remark: '' };
+            this.typeDialogVisible = true;
+        },
+        handleEditType(row) {
+            this.typeDialogTitle = '编辑字典类型';
+            this.isTypeEdit = true;
+            this.typeForm = { id: row.id, code: row.code, name: row.name, remark: row.remark || '' };
+            this.typeDialogVisible = true;
+        },
+        handleDeleteType(row) {
+            ElMessageBox.confirm('删除类型将同时删除其下所有字典项，确定删除吗？', '提示', {
+                confirmButtonText: '确定',
+                cancelButtonText: '取消',
+                type: 'warning'
+            }).then(() => {
+                api.dictionaries.deleteType(row.id).then(() => {
+                    this.showMessage('删除成功', 'success');
+                    if (this.itemsDrawerVisible && this.currentType && this.currentType.id === row.id) {
+                        this.itemsDrawerVisible = false;
+                        this.currentType = null;
+                        this.selectedTypeId = null;
+                    }
+                    if (this.types.length === 1 && this.typePagination.page > 1) this.typePagination.page--;
+                    this.loadTypes();
+                }).catch(err => {
+                    this.showMessage((err.response && err.response.data && err.response.data.msg) || '删除失败', 'error');
+                });
+            }).catch(() => {});
+        },
+        handleTypeSubmit() {
+            if (!this.typeForm.code || !this.typeForm.name) {
+                this.showMessage('请填写类型编码和类型名称', 'error');
+                return;
+            }
+            var req = this.isTypeEdit ? api.dictionaries.updateType(this.typeForm.id, this.typeForm) : api.dictionaries.createType(this.typeForm);
+            req.then(() => {
+                this.showMessage(this.isTypeEdit ? '更新成功' : '创建成功', 'success');
+                this.typeDialogVisible = false;
+                if (!this.isTypeEdit) this.typePagination.page = 1;
+                this.loadTypes();
+            }).catch(err => {
+                this.showMessage((err.response && err.response.data && err.response.data.msg) || '操作失败', 'error');
+            });
+        },
+
+        loadItems() {
+            if (!this.selectedTypeId) {
+                this.items = [];
+                return;
+            }
+            this.itemTableLoading = true;
+            api.dictionaries.getItems({
+                type_id: this.selectedTypeId,
+                page: this.itemPagination.page,
+                page_size: this.itemPagination.page_size
+            }).then(res => {
+                var data = res.data;
+                if (data && data.data) {
+                    this.items = data.data;
+                    if (data.pagination) {
+                        this.itemPagination = {
+                            page: data.pagination.page,
+                            page_size: data.pagination.page_size,
+                            total: data.pagination.total,
+                            total_page: data.pagination.total_page
+                        };
+                    }
+                } else {
+                    this.items = [];
+                }
+            }).catch(err => {
+                this.showMessage((err.response && err.response.data && err.response.data.msg) || '加载字典项失败', 'error');
+            }).finally(() => {
+                this.itemTableLoading = false;
+            });
+        },
+        handleAddItem() {
+            this.itemDialogTitle = '添加字典项';
+            this.isItemEdit = false;
+            this.itemForm = {
+                id: null,
+                type_id: this.currentType ? this.currentType.id : this.selectedTypeId,
+                label: '',
+                value: '',
+                sort: 0,
+                status: 1,
+                remark: ''
+            };
+            this.itemDialogVisible = true;
+        },
+        handleEditItem(row) {
+            this.itemDialogTitle = '编辑字典项';
+            this.isItemEdit = true;
+            this.itemForm = {
+                id: row.id,
+                type_id: row.type_id,
+                label: row.label,
+                value: row.value,
+                sort: row.sort,
+                status: row.status,
+                remark: row.remark || ''
+            };
+            this.itemDialogVisible = true;
+        },
+        handleDeleteItem(row) {
+            ElMessageBox.confirm('确定要删除该字典项吗？', '提示', {
+                confirmButtonText: '确定',
+                cancelButtonText: '取消',
+                type: 'warning'
+            }).then(() => {
+                api.dictionaries.deleteItem(row.id).then(() => {
+                    this.showMessage('删除成功', 'success');
+                    if (this.items.length === 1 && this.itemPagination.page > 1) this.itemPagination.page--;
+                    this.loadItems();
+                }).catch(err => {
+                    this.showMessage((err.response && err.response.data && err.response.data.msg) || '删除失败', 'error');
+                });
+            }).catch(() => {});
+        },
+        handleItemSubmit() {
+            if (!this.itemForm.label || !this.itemForm.value) {
+                this.showMessage('请填写显示文本和值', 'error');
+                return;
+            }
+            if (!this.itemForm.type_id) {
+                this.showMessage('请选择所属类型', 'error');
+                return;
+            }
+            if (this.isItemEdit) {
+                api.dictionaries.updateItem(this.itemForm.id, {
+                    label: this.itemForm.label,
+                    value: this.itemForm.value,
+                    sort: this.itemForm.sort,
+                    status: this.itemForm.status,
+                    remark: this.itemForm.remark
+                }).then(() => {
+                    this.showMessage('更新成功', 'success');
+                    this.itemDialogVisible = false;
+                    this.loadItems();
+                }).catch(err => {
+                    this.showMessage((err.response && err.response.data && err.response.data.msg) || '更新失败', 'error');
+                });
+            } else {
+                api.dictionaries.createItem({
+                    type_id: this.itemForm.type_id,
+                    label: this.itemForm.label,
+                    value: this.itemForm.value,
+                    sort: this.itemForm.sort,
+                    status: this.itemForm.status,
+                    remark: this.itemForm.remark
+                }).then(() => {
+                    this.showMessage('创建成功', 'success');
+                    this.itemDialogVisible = false;
+                    this.itemPagination.page = 1;
+                    this.loadItems();
+                }).catch(err => {
+                    this.showMessage((err.response && err.response.data && err.response.data.msg) || '创建失败', 'error');
+                });
+            }
+        }
+    },
+    mounted() {
+        this.loadTypes();
+    }
+};
+})();
+</script>
+[[end]]
+
+[[define "admin/dictionaries.html"]]
+[[template "layouts/admin.html" .]]
+[[end]]

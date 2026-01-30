@@ -1,0 +1,271 @@
+[[define "auth/login.html"]]
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - 后台管理系统</title>
+    <!-- Element Plus CSS -->
+    <link rel="stylesheet" href="/static/css/element-plus.css">
+    <!-- Vue.js 3 -->
+    <script src="/static/lib/vue.global.js"></script>
+    <!-- Axios -->
+    <script src="/static/lib/axios.min.js"></script>
+    <!-- Element Plus JS -->
+    <script src="/static/lib/element-plus.full.js"></script>
+    <!-- 通用工具函数 -->
+    <script src="/static/js/main.js"></script>
+    <!-- API 请求封装 -->
+    <script src="/static/js/api.js"></script>
+    <!-- 权限管理模块 -->
+    <script src="/static/js/permission.js"></script>
+    <script>
+    // 确保 Element Plus 全局组件可用
+    (function() {
+        function setupGlobals() {
+            if (typeof ElementPlus !== 'undefined') {
+                if (ElementPlus.ElMessage && !window.ElMessage) {
+                    window.ElMessage = ElementPlus.ElMessage;
+                }
+                if (ElementPlus.ElMessageBox && !window.ElMessageBox) {
+                    window.ElMessageBox = ElementPlus.ElMessageBox;
+                }
+                if (ElementPlus.ElNotification && !window.ElNotification) {
+                    window.ElNotification = ElementPlus.ElNotification;
+                }
+            } else {
+                // 如果还没加载，延迟重试（最多重试10次）
+                if (typeof setupGlobals.retryCount === 'undefined') {
+                    setupGlobals.retryCount = 0;
+                }
+                if (setupGlobals.retryCount < 10) {
+                    setupGlobals.retryCount++;
+                    setTimeout(setupGlobals, 50);
+                }
+            }
+        }
+        setupGlobals();
+    })();
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+        }
+        #app {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+        }
+        .login-container {
+            width: 100%;
+            max-width: 420px !important;
+            padding: 20px;
+        }
+        .login-container .el-card {
+            width: 100%;
+            max-width: 100%;
+        }
+        /* Element Plus 全局圆角样式 */
+        /* .el-button {
+            border-radius: 8px !important;
+        }
+        .el-input__wrapper {
+            border-radius: 8px !important;
+        }
+        .el-card {
+            border-radius: 16px !important;
+        }
+        .el-card__header {
+            border-radius: 16px 16px 0 0 !important;
+        }
+        .el-card__body {
+            border-radius: 0 0 16px 16px !important;
+        }
+        .el-form-item__label {
+            border-radius: 0 !important;
+        }
+        .el-message {
+            border-radius: 8px !important;
+        } */
+    </style>
+</head>
+<body>
+<div id="app">
+    <div class="login-container">
+        <el-card shadow="always">
+            <template #header>
+                <div>
+                    <h2>后台管理系统</h2>
+                    <p>请登录您的账户</p>
+                </div>
+            </template>
+            <el-form :model="loginForm" @submit.prevent="handleLogin">
+                <el-form-item>
+                    <el-input v-model="loginForm.username" placeholder="请输入用户名" size="large" clearable></el-input>
+                </el-form-item>
+                <el-form-item>
+                    <el-input v-model="loginForm.password" type="password" placeholder="请输入密码" size="large" show-password clearable></el-input>
+                </el-form-item>
+                <el-form-item>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <el-input v-model="loginForm.captchaVal" placeholder="请输入验证码" size="large" clearable style="flex: 1;"></el-input>
+                        <img :src="captchaImg" @click="refreshCaptcha" alt="验证码" title="点击刷新" style="width: 120px; height: 40px; border: 1px solid #dcdfe6; border-radius: 4px; cursor: pointer; object-fit: contain; background: #f5f7fa;">
+                    </div>
+                </el-form-item>
+                <el-form-item>
+                    <el-button type="primary" native-type="submit" size="large" :loading="loading" style="width: 100%;">登录</el-button>
+                </el-form-item>
+            </el-form>
+        </el-card>
+    </div>
+</div>
+<script>
+const { createApp } = Vue;
+
+const app = createApp({
+    data() {
+        return {
+            loginForm: {
+                username: '',
+                password: '',
+                captchaId: '',
+                captchaVal: ''
+            },
+            captchaImg: '',
+            loading: false
+        }
+    },
+    mounted() {
+        this.refreshCaptcha();
+    },
+    methods: {
+        refreshCaptcha() {
+            axios.get('/api/captcha')
+                .then(res => {
+                    var data = res.data;
+                    // 处理统一响应格式
+                    if (data && typeof data.code !== 'undefined') {
+                        if (data.code !== 0) {
+                            ElMessage.error('获取验证码失败: ' + (data.msg || '未知错误'));
+                            return;
+                        }
+                        data = data.data;
+                    }
+                    this.loginForm.captchaId = data.captcha_id;
+                    var imgData = data.captcha_img;
+                    if (!imgData.startsWith('data:')) {
+                        imgData = 'data:image/png;base64,' + imgData;
+                    }
+                    this.captchaImg = imgData;
+                })
+                .catch(err => {
+                    ElMessage.error('获取验证码失败');
+                });
+        },
+        handleLogin(e) {
+            // 阻止表单默认提交行为
+            if (e && e.preventDefault) {
+                e.preventDefault();
+            }
+            
+            if (!this.loginForm.username || !this.loginForm.password || !this.loginForm.captchaVal) {
+                ElMessage.warning('请填写完整信息');
+                return false;
+            }
+            if (!this.loginForm.captchaId) {
+                ElMessage.warning('请先获取验证码');
+                this.refreshCaptcha();
+                return false;
+            }
+            this.loading = true;
+            const loginData = {
+                username: this.loginForm.username,
+                password: this.loginForm.password,
+                captcha_id: this.loginForm.captchaId,
+                captcha_val: this.loginForm.captchaVal
+            };
+            axios.post('/api/login', loginData)
+                .then(res => {
+                    var data = res.data;
+                    // 处理统一响应格式
+                    if (data && typeof data.code !== 'undefined') {
+                        if (data.code !== 0) {
+                            ElMessage.error(data.msg || '登录失败');
+                            this.refreshCaptcha();
+                            this.loginForm.captchaVal = '';
+                            return;
+                        }
+                        data = data.data;
+                    }
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                    document.cookie = 'token=' + data.token + '; path=/; max-age=86400';
+                    
+                    // 登录成功后，获取并缓存权限
+                    if (window.PermissionManager) {
+                        window.PermissionManager.fetchAndCachePermissions().then(function() {
+                            ElMessage.success('登录成功');
+                            setTimeout(() => {
+                                window.location.href = '/admin';
+                            }, 500);
+                        }).catch(function() {
+                            // 即使权限获取失败，也允许登录
+                            ElMessage.success('登录成功');
+                            setTimeout(() => {
+                                window.location.href = '/admin';
+                            }, 500);
+                        });
+                    } else {
+                        ElMessage.success('登录成功');
+                        setTimeout(() => {
+                            window.location.href = '/admin';
+                        }, 500);
+                    }
+                })
+                .catch(err => {
+                    var msg = '登录失败';
+                    if (err.response && err.response.data) {
+                        if (err.response.data.msg) {
+                            msg = err.response.data.msg;
+                        } else if (err.response.data.error) {
+                            msg = err.response.data.error;
+                        }
+                    }
+                    ElMessage.error(msg);
+                    this.refreshCaptcha();
+                    this.loginForm.captchaVal = '';
+                })
+                .finally(() => {
+                    this.loading = false;
+                });
+            
+            return false;
+        }
+    }
+});
+
+app.use(ElementPlus);
+if (typeof ElementPlusIconsVue !== 'undefined') {
+    const icons = ElementPlusIconsVue;
+    for (const [key, component] of Object.entries(icons)) {
+        app.component(key, component);
+    }
+}
+app.mount('#app');
+</script>
+</body>
+</html>
+[[end]]
