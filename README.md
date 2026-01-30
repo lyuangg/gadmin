@@ -19,7 +19,7 @@
 
 | 层级 | 技术 |
 |------|------|
-| 后端 | Go 1.23、Gin、GORM、MySQL、JWT、robfig/cron |
+| 后端 | Go 1.25、Gin、GORM、MySQL、JWT、robfig/cron |
 | 前端 | Go 模板、Vue 3、Element Plus、Axios |
 | 部署 | Docker、Docker Compose |
 
@@ -66,7 +66,7 @@ docker-compose up -d
 
 ### 环境要求
 
-- Go 1.23+
+- Go 1.25+
 - MySQL 8.0+
 
 ### 配置
