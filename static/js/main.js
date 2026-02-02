@@ -177,45 +177,8 @@ window.createBaseAppConfig = function() {
                 // 权限状态（用于触发响应式更新）
                 permissionsReady: false,
                 isSuperAdmin: false,  // 超级管理员状态
-                // 菜单配置
-                menuItems: [
-                    {
-                        path: '/admin',
-                        name: '首页',
-                        icon: 'House',
-                        permission: null  // 不需要权限
-                    },
-                    {
-                        path: '/admin/users',
-                        name: '用户管理',
-                        icon: 'User',
-                        permission: { path: '/admin/api/users', method: 'GET' }
-                    },
-                    {
-                        path: '/admin/roles',
-                        name: '角色管理',
-                        icon: 'Avatar',
-                        permission: { path: '/admin/api/roles', method: 'GET' }
-                    },
-                    {
-                        path: '/admin/permissions',
-                        name: '权限管理',
-                        icon: 'Lock',
-                        permission: { path: '/admin/api/permissions', method: 'GET' }
-                    },
-                    {
-                        path: '/admin/dictionaries',
-                        name: '字典管理',
-                        icon: 'Collection',
-                        permission: { path: '/admin/api/dictionaries/types', method: 'GET' }
-                    },
-                    {
-                        path: '/admin/operation-logs',
-                        name: '操作日志',
-                        icon: 'Document',
-                        permission: { path: '/admin/api/operation-logs', method: 'GET' }
-                    }
-                ]
+                // 菜单配置（来自 permission.js，唯一数据源）
+                menuItems: window.PermissionManager && window.PermissionManager.menuItems ? window.PermissionManager.menuItems : []
             };
         },
         computed: {

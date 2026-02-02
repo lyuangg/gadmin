@@ -17,26 +17,15 @@
         // localStorage 缓存 key
         CACHE_KEY: 'user_permissions_cache',
 
-        // 菜单权限映射配置
-        menuPermissions: {
-            '/admin': null,  // 首页不需要权限
-            '/admin/users': {
-                path: '/admin/api/users',
-                method: 'GET'
-            },
-            '/admin/roles': {
-                path: '/admin/api/roles',
-                method: 'GET'
-            },
-            '/admin/permissions': {
-                path: '/admin/api/permissions',
-                method: 'GET'
-            },
-            '/admin/dictionaries': {
-                path: '/admin/api/dictionaries/types',
-                method: 'GET'
-            }
-        },
+        // 菜单配置（唯一数据源，供 main.js 侧栏与权限检查共用）
+        menuItems: [
+            { path: '/admin', name: '首页', icon: 'House', permission: null },
+            { path: '/admin/users', name: '用户管理', icon: 'User', permission: { path: '/admin/api/users', method: 'GET' } },
+            { path: '/admin/roles', name: '角色管理', icon: 'Avatar', permission: { path: '/admin/api/roles', method: 'GET' } },
+            { path: '/admin/permissions', name: '权限管理', icon: 'Lock', permission: { path: '/admin/api/permissions', method: 'GET' } },
+            { path: '/admin/dictionaries', name: '字典管理', icon: 'Collection', permission: { path: '/admin/api/dictionaries/types', method: 'GET' } },
+            { path: '/admin/operation-logs', name: '操作日志', icon: 'Document', permission: { path: '/admin/api/operation-logs', method: 'GET' } },
+        ],
 
         // 按钮权限映射配置（按页面分组）
         buttonPermissions: {
@@ -172,11 +161,14 @@
         },
 
         /**
-         * 清除权限缓存
+         * 清除权限缓存（localStorage 与内存状态）
          */
         clearCache: function() {
             try {
                 localStorage.removeItem(this.CACHE_KEY);
+                this.initialized = false;
+                this.permissions = [];
+                this.initPromise = null;
             } catch (error) {
                 console.error('清除权限缓存失败:', error);
             }
@@ -308,19 +300,15 @@
          * @returns {boolean}
          */
         isMenuVisible: function(menuPath) {
-            var menuPerm = this.menuPermissions[menuPath];
-            
-            // 如果菜单不需要权限，始终显示
-            if (!menuPerm) {
+            var item = this.menuItems.find(function(m) { return m.path === menuPath; });
+            if (!item || !item.permission) {
                 return true;
             }
-
-            // 检查是否有对应的权限
-            var hasPerm = this.hasPermission(menuPerm.path, menuPerm.method);
+            var hasPerm = this.hasPermission(item.permission.path, item.permission.method);
             console.log('检查菜单权限:', {
                 menuPath: menuPath,
-                requiredPath: menuPerm.path,
-                requiredMethod: menuPerm.method,
+                requiredPath: item.permission.path,
+                requiredMethod: item.permission.method,
                 hasPermission: hasPerm,
                 isSuperAdmin: this.isSuperAdmin
             });
